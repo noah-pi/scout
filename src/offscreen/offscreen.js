@@ -1,0 +1,51 @@
+// Runs Scout's model calls: Claude through the Anthropic SDK, and Gemini Nano
+// through Chrome's Prompt API. It lives in an offscreen document so the 300 KB
+// SDK stays out of the service worker, and so slow calls outlive the worker's
+// idle timer.
+import { Anthropic } from '../../dist/anthropic.js';
+
+function describe(error) {
+  if (error instanceof Anthropic.AuthenticationError) return { kind: 'auth', message: 'The API key was rejected.' };
+  if (error instanceof Anthropic.PermissionDeniedError) return { kind: 'permission', message: error.message };
+  if (error instanceof Anthropic.RateLimitError) return { kind: 'rate', message: 'Rate limited; try again shortly.' };
+  if (error instanceof Anthropic.BadRequestError) return { kind: 'bad-request', message: error.message };
+  if (error instanceof Anthropic.APIConnectionError) return { kind: 'network', message: 'Could not reach the API.' };
+  if (error instanceof Anthropic.APIError) return { kind: 'api', message: `API error ${error.status}: ${error.message}` };
+  return { kind: 'unknown', message: String(error?.message ?? error) };
+}
+
+async function claude({ apiKey, baseURL, request }) {
+  // dangerouslyAllowBrowser: the key is yours and lives only in this
+  // extension's local storage; there is no server to proxy through.
+  const client = new Anthropic({ apiKey, baseURL: baseURL || undefined, dangerouslyAllowBrowser: true, maxRetries: 1 });
+  return client.beta.messages.create(request);
+}
+
+async function nanoAvailability() {
+  if (typeof LanguageModel === 'undefined') return 'unsupported';
+  try {
+    return await LanguageModel.availability();
+  } catch {
+    return 'unavailable';
+  }
+}
+
+async function nanoPrompt({ system, prompt, schema }) {
+  if ((await nanoAvailability()) !== 'available') return null;
+  const session = await LanguageModel.create({ initialPrompts: [{ role: 'system', content: system }] });
+  try {
+    return JSON.parse(await session.prompt(prompt, { responseConstraint: schema }));
+  } finally {
+    session.destroy();
+  }
+}
+
+const ops = { claude, nanoAvailability, nanoPrompt };
+
+chrome.runtime.onMessage.addListener((message, _sender, reply) => {
+  if (message?.target !== 'offscreen' || !ops[message.op]) return false;
+  ops[message.op](message.args ?? {})
+    .then((value) => reply({ ok: true, value }))
+    .catch((error) => reply({ ok: false, error: describe(error) }));
+  return true;
+});

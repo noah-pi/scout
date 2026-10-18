@@ -1,3 +1,5 @@
+import { MODELS } from '../shared/assessment.js';
+
 const $ = (id) => document.getElementById(id);
 
 const ask = async (message) => {
@@ -24,7 +26,7 @@ function span(text, className) {
 async function render() {
   const tabId = await activeTabId();
   if (tabId === undefined) return;
-  const { tab, blocked, receipts, chrome: protection } = await ask({ type: 'panelState', tabId });
+  const { tab, blocked, receipts, chrome: protection, settings, spend, nano } = await ask({ type: 'panelState', tabId });
 
   $('level').textContent = tab.trusted ? 'trusted' : tab.level;
   $('level').className = `level ${tab.trusted ? 'quiet' : tab.level}`;
@@ -71,9 +73,30 @@ async function render() {
         ? 'Safe Browsing is on. Extensions can\'t see whether it\'s Enhanced protection, which adds on-device scam detection; check the setting.'
         : 'Safe Browsing status unavailable.';
 
+  $('investigate').hidden = !tab.host;
+  const inv = tab.investigation;
+  $('investigation').hidden = !inv;
+  if (inv) {
+    const lines = inv.declined
+      ? [`Claude couldn't assess this page (${inv.declined}).`]
+      : [`${VERDICTS[inv.verdict] ?? inv.verdict}.`, inv.summary, ...(inv.reasons ?? [])];
+    $('investigation').replaceChildren(...lines.filter(Boolean).map((l) => Object.assign(document.createElement('p'), { textContent: l })),
+      Object.assign(document.createElement('p'), { className: 'muted', textContent: `${inv.model} · ${new Date(inv.at).toLocaleTimeString()}` }));
+  }
+
+  $('spend').textContent = settings.cloud
+    ? `Today: ${spend.calls} of ${settings.dailyCap} cloud checks, $${spend.usd.toFixed(3)}.`
+    : `Cloud checks are off${settings.hasKey ? '' : ' (no API key)'}. Investigate still works once a key is saved.`;
+  $('nano').textContent = NANO[nano] ?? `On-device model: ${nano}.`;
+  $('nano-download').hidden = nano !== 'downloadable';
+  fillSettings(settings);
+
   $('receipts').replaceChildren(
     ...receipts.map((r) =>
-      item(span(`${r.dryRun ? 'dry run · ' : ''}${r.service}: ${r.sent}`, r.dryRun ? 'dry' : ''), span(new Date(r.at).toLocaleTimeString())),
+      item(
+        span(`${r.dryRun ? 'dry run · ' : ''}${r.service}: ${r.sent}${r.usd ? ` · $${r.usd.toFixed(4)}` : ''}`, r.dryRun ? 'dry' : ''),
+        span(new Date(r.at).toLocaleTimeString()),
+      ),
     ),
   );
 }
@@ -83,6 +106,69 @@ $('trust').onclick = async () => {
   const { tab } = await ask({ type: 'panelState', tabId });
   await ask({ type: tab.trusted ? 'untrust' : 'trust', tabId });
   render();
+};
+
+const VERDICTS = { likely_scam: 'Likely a scam', unclear: "Can't tell", likely_safe: 'Nothing wrong found' };
+const NANO = {
+  available: 'On-device model (Gemini Nano) is ready; it runs before any cloud check.',
+  downloadable: 'On-device model (Gemini Nano) can be downloaded.',
+  downloading: 'On-device model is downloading.',
+  unavailable: "On-device model isn't available on this device.",
+  unsupported: "This Chrome doesn't offer an on-device model.",
+};
+
+let settingsFilled = false;
+function fillSettings(settings) {
+  if (settingsFilled) return; // don't clobber what you're typing on each refresh
+  settingsFilled = true;
+  const form = $('settings-form');
+  for (const name of ['quickModel', 'deepModel']) {
+    form[name].replaceChildren(...MODELS.map((m) => Object.assign(document.createElement('option'), { value: m, textContent: m })));
+    form[name].value = settings[name];
+  }
+  form.cloud.checked = settings.cloud;
+  form.dailyCap.value = settings.dailyCap;
+  form.apiKey.placeholder = settings.hasKey ? 'saved (enter a new key to replace it)' : 'sk-ant-…';
+}
+
+$('settings-form').onsubmit = async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const changes = { cloud: form.cloud.checked, quickModel: form.quickModel.value, deepModel: form.deepModel.value, dailyCap: form.dailyCap.value };
+  if (form.apiKey.value.trim()) changes.apiKey = form.apiKey.value.trim();
+  await ask({ type: 'saveSettings', changes });
+  form.apiKey.value = '';
+  settingsFilled = false;
+  $('saved').textContent = 'Saved.';
+  render();
+};
+
+$('investigate').onclick = async () => {
+  const button = $('investigate');
+  button.disabled = true;
+  button.textContent = 'Investigating…';
+  try {
+    await ask({ type: 'investigate', tabId: await activeTabId() });
+  } catch (error) {
+    $('investigation').hidden = false;
+    $('investigation').textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Investigate';
+    render();
+  }
+};
+
+// Downloading Gemini Nano needs a click, so it starts here, not in the worker.
+$('nano-download').onclick = async () => {
+  try {
+    const session = await LanguageModel.create({
+      monitor: (m) => m.addEventListener('downloadprogress', (e) => ($('nano').textContent = `Downloading on-device model: ${Math.round(e.loaded * 100)}%`)),
+    });
+    session.destroy();
+  } catch (error) {
+    $('nano').textContent = `Download failed: ${error.message}`;
+  }
 };
 
 $('chrome-settings').onclick = () => ask({ type: 'openChromeSecurity' });

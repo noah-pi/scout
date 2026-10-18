@@ -10,6 +10,8 @@ await Promise.all([
   build({ ...shared, entryPoints: ['src/content/consent.js'], outfile: 'dist/consent.js', format: 'iife' }),
   // Service-worker side of autoconsent: the main-world snippets and rule filter.
   build({ ...shared, entryPoints: ['src/background/consent-lib.js'], outfile: 'dist/consent-lib.js', format: 'esm' }),
+  // The Anthropic SDK, loaded only by the offscreen document.
+  build({ ...shared, entryPoints: ['src/offscreen/anthropic-entry.js'], outfile: 'dist/anthropic.js', format: 'esm' }),
   // Public Suffix List lookups, shared by the worker and the unit tests.
   build({ ...shared, entryPoints: ['tldts'], outfile: 'dist/tldts.js', format: 'esm' }),
 ]);

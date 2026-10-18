@@ -11,7 +11,7 @@ Built for one user, loaded unpacked, never published to the Chrome Web Store.
 
 The manifest carries a fixed `key`, so the extension ID (and the memory stored under it) survives moving the folder. Export memory from the panel before uninstalling; removing the extension erases it.
 
-## What works now (v0.2)
+## What works now (v0.3)
 
 | Piece | What it does |
 |---|---|
@@ -21,8 +21,10 @@ The manifest carries a fixed `key`, so the extension ID (and the memory stored u
 | **Fingerprint watch** | Notes when a page reads canvas, WebGL GPU strings, audio or font probes. It reports and never blocks. Login pages do this routinely for fraud checks, so it never moves the badge. |
 | **Tripwire** | Local lookalike detection (confusable characters, one-letter typos, a brand in a subdomain or a hyphenated name, punycode) against your banks, stores and trusted sites, using the full Public Suffix List. Domain age comes from RDAP, and only once a page shows a password or payment field. |
 | **Chrome relay** | Shows whether Chrome's Safe Browsing is on. Extensions can't see whether it's Enhanced protection (the mode with on-device scam detection), so the panel links to the setting. |
-| **Ladder** | Turns stakes and flags into a badge (quiet, `•` note, `!` stop) and decides when a cloud check would be worth it. Cloud tiers are not wired yet. Each time one would have run, Scout logs a **dry-run receipt**, so the trigger rate is visible before any tokens are spent. |
-| **Receipts** | Every request that leaves the browser on Scout's behalf, listed in the panel with what was sent and why. |
+| **Ladder** | Turns stakes and flags into a badge (quiet, `•` note, `!` stop). On a login or payment page whose local signals are mixed (soft flags, no hard one), it climbs: **Gemini Nano** on the device first (free; names the brand the page presents as), then a **quick Claude check** if cloud checks are on and today's cap allows. When cloud checks are off, Scout logs a dry-run receipt instead, so you can see how often one would have run. |
+| **Page checks** | Free local checks once a page asks for a password or a card: a protected brand named in the title or headings on a different domain, and a sensitive form that posts to another site. |
+| **Investigate** | A button in the panel. Sends Claude the page's fields plus its visible text (redacted, capped at 6,000 characters) at high effort and shows a verdict, a short summary and reasons. |
+| **Receipts** | Every request that leaves the browser on Scout's behalf, listed in the panel with what was sent, why and what it cost. |
 | **Memory** | Sites you trust and alerts you dismiss. Trust lapses if a domain's registration date changes (expired and re-bought) or after a year. Hard red flags can't be dismissed; only trusting the site clears them. |
 
 ## Layout
@@ -36,7 +38,8 @@ scripts/update-lists.mjs  refreshes rules/ and data/ from upstream (needs networ
 scripts/build.mjs         rebuilds dist/ from node_modules (offline)
 src/shared/             pure logic: ladder, tripwire, trust, tracker naming (unit-tested)
 src/background/         service worker, storage, memory, network lookups
-src/content/            main-world.js (GPC + fingerprint hooks), page.js (stakes), consent.js (autoconsent)
+src/content/            main-world.js (GPC + fingerprint hooks), page.js (stakes, page fields), consent.js (autoconsent)
+src/offscreen/          model calls: Anthropic SDK and Chrome's Prompt API
 src/sidepanel/          the panel
 tests/                  node:test
 ```
@@ -46,9 +49,20 @@ Generated files are committed, so **Load unpacked** works straight from a clone.
 ```
 npm install
 npm test               # unit tests
-npm run build          # after bumping autoconsent or tldts
+npm run build          # after bumping autoconsent, tldts or the Anthropic SDK
 npm run update-lists   # every few weeks: fresh EasyPrivacy and Tracker Radar
 ```
+
+## Cloud checks
+
+Off until you turn them on. In the panel, open **Models → Settings**, paste an Anthropic API key, and tick **Cloud checks**.
+
+- **Models:** Claude Opus 5.5 by default for both the quick check (low effort) and Investigate (high effort). Haiku 5.5 is roughly forty times cheaper per check, with less judgment; switch the quick check to it if cost matters more.
+- **Cost:** a quick check sends about 1,000 tokens and gets back a few hundred, about half a cent on Opus 5.5. Investigate costs more, depending on the page. The panel shows today's count and spend, and each receipt carries its own cost.
+- **Cap:** 25 quick checks a day by default. Investigate isn't capped, since you click it yourself.
+- **Refusals:** Opus and Sonnet requests opt into server-side fallback (`fallbacks: "default"`), so a safety decline is retried on another model. A refusal that still stands becomes an info note, never a warning.
+- **Where it runs:** model calls happen in an offscreen document, not the service worker. The SDK is 300 KB, and slow calls outlive the worker's idle timer there.
+- **What's sent:** the evidence object in `src/shared/assessment.js`: host, registration date, what the page asks for, Scout's local signals, and the page's title, description, headings, field labels and form destinations. Emails and long numbers are redacted. Investigate adds visible text. Values typed into fields are never read.
 
 ## Design rules
 
@@ -64,13 +78,16 @@ npm run update-lists   # every few weeks: fresh EasyPrivacy and Tracker Radar
 - uBO's 13 redirect rules are dropped, since they depend on uBO's own stub scripts. A few trackers that uBO would neuter therefore load.
 - If Chrome has idled the service worker, early tracker events on a page can arrive before Scout is listening. They're still blocked, and the panel counts them as "blocked before Scout could name them."
 - Large data files load on first use. Bundling them into the service worker kept Chrome from delivering navigation and rule-match events to it.
+- Once, in testing, a page opened in the first moment after install showed no blocks at all, which suggests Chrome hadn't loaded the rules yet. It didn't recur.
+- The Gemini Nano tier is wired and feature-detected but untested on real hardware: headless Chromium reports the model as downloadable and can't run it.
+- The API key sits unencrypted in the extension's local storage. That's fine on your own machine; don't load Scout into a shared Chrome profile.
 - Chrome gives extensions no access to TLS certificates, so trust is tied to domain registration rather than the certificate.
 
 ## Roadmap
 
 1. ~~Shield, GPC, Tripwire (local), badge, receipts, memory~~
 2. ~~EasyPrivacy, consent-banner auto-reject, the full Public Suffix List, Safe Browsing state~~
-3. Escalation engine live: Gemini Nano tier, Claude tiers, daily budget meter
+3. ~~Escalation engine live: Gemini Nano tier, Claude tiers, daily budget meter, Investigate~~
 4. Census: Reddit thread coordination scoring
 5. Provenance: relay Chrome's C2PA and SynthID results; own c2pa-js reading and IPTC labels for the rest
 6. Ask Scout (right-click), Fine print reader on sign-up and checkout pages
@@ -79,4 +96,4 @@ npm run update-lists   # every few weeks: fresh EasyPrivacy and Tracker Radar
 
 - EasyPrivacy rules: GPLv3 / CC BY-SA 3.0 (EasyList authors), via uBlock Origin Lite (GPLv3)
 - Tracker Radar entity map: CC BY-NC-SA 4.0 (DuckDuckGo), fine for personal, non-commercial use
-- autoconsent: MPL-2.0 (DuckDuckGo) · tldts: MIT
+- autoconsent: MPL-2.0 (DuckDuckGo) · tldts: MIT · Anthropic SDK: MIT

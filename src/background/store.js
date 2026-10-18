@@ -44,9 +44,9 @@ export async function cached(key, ttlMs, load) {
 
 // Every request that leaves the browser on Scout's behalf gets a receipt:
 // what service, what was sent, and why.
-export async function addReceipt({ service, sent, reason, dryRun = false }) {
+export async function addReceipt({ service, sent, reason, dryRun = false, usd = null }) {
   const { receipts = [] } = await chrome.storage.local.get('receipts');
-  receipts.unshift({ at: Date.now(), service, sent, reason, dryRun });
+  receipts.unshift({ at: Date.now(), service, sent, reason, dryRun, usd });
   await chrome.storage.local.set({ receipts: receipts.slice(0, RECEIPT_CAP) });
 }
 

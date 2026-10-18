@@ -1,9 +1,12 @@
 import { assess } from '../shared/ladder.js';
 import { ownerIndex, trackerFor } from '../shared/trackers.js';
 import { registrableDomain } from '../shared/tripwire.js';
-import { addReceipt, dropTab, emptyTab, getReceipts, getTab, updateTab } from './store.js';
+import { dropTab, emptyTab, getReceipts, getTab, updateTab } from './store.js';
 import { ageFlags, localFlags, registrationOf } from './tripwire.js';
 import * as memory from './memory.js';
+import { escalate, investigate, nanoStatus } from './escalate.js';
+import { getSpend, publicSettings, saveSettings } from './settings.js';
+import { pageFlags } from '../shared/assessment.js';
 import { evalSnippets, filterCompactRules } from '../../dist/consent-lib.js';
 
 // Reject everything a banner offers; cosmetic rules hide banners that can't be
@@ -84,12 +87,6 @@ async function reassess(tabId, state) {
   const flags = trusted ? [] : state.flags;
   const result = assess({ stakes: state.stakes, flags, dismissals: await memory.dismissals() });
 
-  if (result.escalate && !state.escalate) {
-    // Cloud tiers aren't wired yet. Logging the would-be call shows how often
-    // the trigger fires before any tokens are spent on it.
-    await addReceipt({ service: 'tier3', sent: domain, reason: result.notes.map((n) => n.kind).join(', '), dryRun: true });
-  }
-
   state.level = result.level;
   state.escalate = result.escalate;
   state.trusted = Boolean(trusted);
@@ -97,6 +94,37 @@ async function reassess(tabId, state) {
   chrome.action.setBadgeText({ tabId, text: badge.text }).catch(() => {});
   chrome.action.setBadgeBackgroundColor({ tabId, color: badge.color }).catch(() => {});
   return state;
+}
+
+// Replaces flags of the same kind, so a re-check updates its note in place.
+function mergeFlags(flags, added) {
+  const kinds = new Set(added.map((f) => f.kind));
+  return [...flags.filter((f) => !kinds.has(f.kind)), ...added];
+}
+
+// Adds flags to a tab, unless it has since moved to another site.
+function applyFlags(tabId, host) {
+  return (added) =>
+    updateTab(tabId, async (state) => {
+      if (state.host !== host) return state;
+      state.flags = mergeFlags(state.flags, added);
+      return reassess(tabId, state);
+    });
+}
+
+// Tiers 2 and 3 run at most once per page, after the stakes are known.
+function maybeEscalate(tabId, state) {
+  if (state.escalate !== 'tier3' || state.escalated) return state;
+  state.escalated = true;
+  const page = state.page ?? {};
+  queueMicrotask(() => escalate(structuredClone(state), page, applyFlags(tabId, state.host)).catch(() => {}));
+  return state;
+}
+
+let nanoCache = null;
+async function cachedNanoStatus() {
+  if (!nanoCache || Date.now() - nanoCache.at > 60_000) nanoCache = { at: Date.now(), value: await nanoStatus() };
+  return nanoCache.value;
 }
 
 chrome.webNavigation.onCommitted.addListener(({ tabId, frameId, url, timeStamp }) => {
@@ -121,17 +149,23 @@ chrome.declarativeNetRequest.onRuleMatchedDebug?.addListener(({ request, rule })
 });
 
 const handlers = {
-  async stakes({ stakes, timeOrigin }, sender) {
+  async stakes({ stakes, page, timeOrigin }, sender) {
     const tabId = sender.tab.id;
     return updateTab(tabId, async (current) => {
       const state = await atUrl(current, sender.tab.url, timeOrigin);
       const isNew = (stakes.password && !state.stakes.password) || (stakes.payment && !state.stakes.payment);
       state.stakes = { ...state.stakes, ...stakes };
-      if (isNew && state.host && state.registeredAt === undefined) {
-        state.registeredAt = await registrationOf(state.host);
-        state.flags = [...state.flags.filter((f) => !f.kind.endsWith('domain')), ...ageFlags(state.registeredAt)];
+      if (isNew && state.host) {
+        if (state.registeredAt === undefined) {
+          state.registeredAt = await registrationOf(state.host);
+          state.flags = mergeFlags(state.flags.filter((f) => !f.kind.endsWith('domain')), ageFlags(state.registeredAt));
+        }
+        if (page) {
+          state.page = { ...page, formHosts: (page.formHosts ?? []).map(registrableDomain) };
+          state.flags = mergeFlags(state.flags, pageFlags(registrableDomain(state.host), state.page, await memory.protectedDomains()));
+        }
       }
-      return reassess(tabId, state);
+      return maybeEscalate(tabId, await reassess(tabId, state));
     });
   },
 
@@ -192,7 +226,32 @@ const handlers = {
   async panelState({ tabId }) {
     const tab = await getTab(tabId);
     const blocked = tab.committedAt ? await blockedSince(tabId, tab.committedAt) : null;
-    return { tab, blocked, receipts: (await getReceipts()).slice(0, 25), chrome: await chromeProtection() };
+    return {
+      tab,
+      blocked,
+      receipts: (await getReceipts()).slice(0, 25),
+      chrome: await chromeProtection(),
+      settings: await publicSettings(),
+      spend: await getSpend(),
+      nano: await cachedNanoStatus(),
+    };
+  },
+
+  saveSettings: ({ changes }) => saveSettings(changes).then(() => publicSettings()),
+
+  // Tier 4: you asked. Reads the page's visible text as well as its fields.
+  async investigate({ tabId }) {
+    const state = await getTab(tabId);
+    if (!state.host) throw new Error('Nothing to investigate on this page.');
+    const page = await chrome.tabs.sendMessage(tabId, { type: 'extract', deep: true }, { frameId: 0 }).catch(() => state.page ?? {});
+    const formHosts = (page.formHosts ?? state.page?.formHosts ?? []).map(registrableDomain);
+    const found = await investigate(state, { ...(state.page ?? {}), ...page, formHosts });
+    return updateTab(tabId, async (s) => {
+      if (s.host !== state.host) return s;
+      s.investigation = { verdict: found.result.verdict, summary: found.result.summary, reasons: found.result.reasons, declined: found.result.declined, model: found.model, at: found.at };
+      s.flags = mergeFlags(s.flags, found.flags);
+      return reassess(tabId, s);
+    });
   },
 
   openChromeSecurity: () => chrome.tabs.create({ url: 'chrome://settings/security' }),

@@ -17,7 +17,9 @@
     <ul id="notes" class="notes"></ul>
     <div class="actions">
       <button id="trust" type="button">Trust this site</button>
+      <button id="investigate" type="button">Investigate</button>
     </div>
+    <div id="investigation" class="investigation" hidden></div>
   </section>
 
   <section>
@@ -39,6 +41,25 @@
     <h2>Receipts</h2>
     <p class="muted">Everything that left the browser on Scout's behalf. Dry runs show where a cloud check would have run.</p>
     <ul id="receipts" class="receipts"></ul>
+  </section>
+
+  <section>
+    <h2>Models</h2>
+    <p id="spend" class="muted"></p>
+    <p id="nano" class="muted"></p>
+    <div class="actions"><button id="nano-download" type="button" hidden>Download on-device model</button></div>
+    <details id="settings">
+      <summary>Settings</summary>
+      <form id="settings-form" class="settings">
+        <label><input type="checkbox" name="cloud"> Cloud checks on login and payment pages with mixed signals</label>
+        <label>Anthropic API key <input type="password" name="apiKey" autocomplete="off" spellcheck="false"></label>
+        <label>Quick check model <select name="quickModel"></select></label>
+        <label>Investigate model <select name="deepModel"></select></label>
+        <label>Daily cap on quick checks <input type="number" name="dailyCap" min="0" step="1"></label>
+        <p class="muted">Opus 5.5 is the default for both. Haiku 5.5 is roughly forty times cheaper per check, with less judgment. The key stays in this browser's extension storage.</p>
+        <div class="actions"><button type="submit">Save</button><span id="saved" class="muted"></span></div>
+      </form>
+    </details>
   </section>
 
   <section>
