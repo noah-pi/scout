@@ -2,12 +2,12 @@
 // and never appears in receipts.
 import { MODELS } from '../shared/assessment.js';
 
-// Opus 5.5 at low effort for the quick check; Haiku 5.5 is roughly forty times
-// cheaper per check if you'd rather trade judgment for cost.
+// Haiku 5.5 for routine work (quick page checks, spoiler context); Opus 5.5
+// for critical reasoning (Investigate, bot-pattern analysis).
 export const DEFAULTS = {
   apiKey: '',
   cloud: false,
-  quickModel: 'claude-opus-5-5',
+  quickModel: 'claude-haiku-5-5',
   deepModel: 'claude-opus-5-5',
   dailyCap: 25,
   baseURL: '', // for tests; empty means api.anthropic.com

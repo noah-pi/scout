@@ -1,0 +1,31 @@
+name: Update lists
+
+# Monthly: refresh EasyPrivacy, Tracker Radar and the other upstream lists,
+# run the tests, and open a pull request with the changes.
+on:
+  schedule:
+    - cron: '17 9 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run update-lists
+      - run: npm test
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: update-lists
+          commit-message: Refresh upstream lists
+          title: Refresh upstream lists
+          body: Monthly refresh from scripts/update-lists.mjs. Unit tests passed on this branch.

@@ -57,8 +57,8 @@ npm run update-lists   # every few weeks: fresh EasyPrivacy and Tracker Radar
 
 Off until you turn them on. In the panel, open **Models → Settings**, paste an Anthropic API key, and tick **Cloud checks**.
 
-- **Models:** Claude Opus 5.5 by default for both the quick check (low effort) and Investigate (high effort). Haiku 5.5 is roughly forty times cheaper per check, with less judgment; switch the quick check to it if cost matters more.
-- **Cost:** a quick check sends about 1,000 tokens and gets back a few hundred, about half a cent on Opus 5.5. Investigate costs more, depending on the page. The panel shows today's count and spend, and each receipt carries its own cost.
+- **Models:** Claude Haiku 5.5 for routine work (quick page checks, spoiler context). Claude Opus 5.5 for critical reasoning: Investigate (high effort) and bot-pattern analysis. Both are configurable.
+- **Cost:** a quick check sends about 1,000 tokens and gets back a few hundred, under a tenth of a cent on Haiku 5.5. Investigate on Opus 5.5 costs a cent or more, depending on the page. The panel shows today's count and spend, and each receipt carries its own cost.
 - **Cap:** 25 quick checks a day by default. Investigate isn't capped, since you click it yourself.
 - **Refusals:** Opus and Sonnet requests opt into server-side fallback (`fallbacks: "default"`), so a safety decline is retried on another model. A refusal that still stands becomes an info note, never a warning.
 - **Where it runs:** model calls happen in an offscreen document, not the service worker. The SDK is 300 KB, and slow calls outlive the worker's idle timer there.
