@@ -5,3 +5,4 @@ node_modules/
 _metadata/
 research_notes/
 reports/
+!data/c2pa-trust.pem
