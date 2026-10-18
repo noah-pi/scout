@@ -3,10 +3,11 @@
 // cloud checks are on, and today's budget allows it. "Investigate" is the
 // user-initiated deep check.
 import {
-  NANO_BRAND_PROMPT, buildEvidence, buildRequest, costOf, nanoFlags, parseVerdict, verdictFlags,
+  NANO_BRAND_PROMPT, buildEvidence, buildMessageRequest, buildRequest, costOf, nanoFlags, parseVerdict, verdictFlags,
 } from '../shared/assessment.js';
 import { buildSpoilerRequest, parseSpoilerResults } from '../shared/spoilers.js';
 import { buildThreadRequest, parseThreadVerdict } from '../shared/census.js';
+import { buildPolicyRequest, parsePolicy } from '../shared/fineprint.js';
 import { registrableDomain } from '../shared/tripwire.js';
 import { addReceipt } from './store.js';
 import { addSpend, getSettings, getSpend } from './settings.js';
@@ -153,6 +154,49 @@ export async function analyzeThread(evidence, host) {
   await addSpend(usd);
   await addReceipt({ service: `claude (${model})`, sent: `${host}: ${evidence.comments.length} comments, authors pseudonymized`, reason: 'You asked Scout to analyze the thread', usd });
   return { ...parseThreadVerdict(response), model, at: Date.now() };
+}
+
+async function needKey() {
+  const settings = await getSettings();
+  if (!settings.apiKey) throw new Error('Add an API key in Settings first.');
+  return settings;
+}
+
+async function call(settings, model, request, receipt) {
+  const response = await offscreen('claude', { apiKey: settings.apiKey, baseURL: settings.baseURL, request });
+  const usd = costOf(model, response.usage);
+  await addSpend(usd);
+  await addReceipt({ ...receipt, service: `claude (${model})`, usd });
+  return response;
+}
+
+// Fine print: fetch the policy pages and pull out what matters.
+export async function readFinePrint(site, urls) {
+  const settings = await needKey();
+  const docs = [];
+  for (const url of urls) {
+    const doc = await offscreen('fetchText', { url }).catch(() => null);
+    if (doc?.text?.length > 200) docs.push(doc);
+  }
+  if (!docs.length) throw new Error("Couldn't load this site's privacy policy or terms.");
+  await addReceipt({ service: new URL(docs[0].url).hostname, sent: `fetched ${docs.length} policy page${docs.length > 1 ? 's' : ''}, no cookies`, reason: 'Fine print' });
+  const model = settings.quickModel;
+  const response = await call(settings, model, buildPolicyRequest(model, site, docs), {
+    sent: `${site}: ${docs.map((d) => new URL(d.url).pathname).join(', ')} (${Math.round(docs.reduce((n, d) => n + d.text.length, 0) / 1000)}k chars)`,
+    reason: 'You asked Scout to read the fine print',
+  });
+  return { ...parsePolicy(response, docs), sources: docs.map((d) => d.url), model, at: Date.now() };
+}
+
+// Ask Scout about selected text: is this message a scam?
+export async function askAboutText(text, host) {
+  const settings = await needKey();
+  const model = settings.quickModel;
+  const response = await call(settings, model, buildMessageRequest(model, text), {
+    sent: `${host}: ${Math.min(text.length, 4000)} characters you selected`,
+    reason: 'You asked whether a message is a scam',
+  });
+  return parseVerdict(response);
 }
 
 export async function investigate(state, page) {

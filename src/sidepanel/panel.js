@@ -93,6 +93,9 @@ async function render() {
   fillSettings(settings);
   renderCensus(tab.census);
   renderImages(tab.images ?? []);
+  renderAsked(tab.asked ?? []);
+  renderFinePrint(tab.finePrint);
+  $('fine-print').hidden = !tab.host;
   renderSpoilers(tab.spoilersHidden ?? 0);
 
   $('receipts').replaceChildren(
@@ -217,6 +220,39 @@ ask({ type: 'getSpoilers' }).then((s) => {
   renderSpoilers();
 });
 
+const p = (textContent, className = '') => Object.assign(document.createElement('p'), { textContent, className });
+
+function renderAsked(asked) {
+  $('asked').hidden = !asked.length;
+  $('asked-list').replaceChildren(
+    ...asked.map((a) => {
+      const li = document.createElement('li');
+      li.append(p(a.headline, `headline ${a.tone}`), ...a.lines.map((l) => p(l, 'muted')), p(a.kind === 'link' ? a.subject : `“${a.subject}”`, 'muted'));
+      return li;
+    }),
+  );
+}
+
+function renderFinePrint(fp) {
+  const box = $('fine-print-result');
+  box.hidden = !fp;
+  if (!fp) return;
+  if (fp.declined) return box.replaceChildren(p(`The model couldn't read these terms (${fp.declined}).`));
+  const list = document.createElement('ul');
+  list.className = 'fine';
+  for (const point of fp.points) {
+    const li = document.createElement('li');
+    li.append(p(point.text, point.verdict));
+    const q = document.createElement('blockquote');
+    q.textContent = point.verified ? `“${point.quote}”` : `“${point.quote}” (not found in the text; treat with caution)`;
+    li.append(q);
+    list.append(li);
+  }
+  box.replaceChildren(p(fp.summary), list, p(`${fp.model} · from ${fp.sources.map((s) => new URL(s).pathname).join(', ')}`, 'muted'));
+}
+
+$('fine-print').onclick = (e) => busy(e.target, 'Reading…', async () => ask({ type: 'finePrint', tabId: await activeTabId() }), 'fine-print-result');
+
 function renderImages(images) {
   $('images').hidden = !images.length;
   $('image-list').replaceChildren(
@@ -254,15 +290,15 @@ function renderCensus(census) {
   }
 }
 
-async function busy(button, label, work) {
+async function busy(button, label, work, errorBox = 'census-analysis') {
   const original = button.textContent;
   button.disabled = true;
   button.textContent = label;
   try {
     await work();
   } catch (error) {
-    $('census-analysis').hidden = false;
-    $('census-analysis').textContent = error.message;
+    $(errorBox).hidden = false;
+    $(errorBox).textContent = error.message;
   } finally {
     button.disabled = false;
     button.textContent = original;

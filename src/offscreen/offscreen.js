@@ -82,7 +82,18 @@ async function readImage({ url }) {
   return { url, type: blob.type, size: blob.size, store, c2paError, head: Array.from(bytes.subarray(0, 16)), meta: sniffMetadata(bytes) };
 }
 
-const ops = { claude, nanoAvailability, nanoPrompt, readImage };
+// Fetches a page (a privacy policy, say) without cookies and returns its
+// readable text. Parsed with DOMParser, so none of its scripts run.
+async function fetchText({ url }) {
+  const res = await fetch(url, { credentials: 'omit', redirect: 'follow' });
+  if (!res.ok) throw new Error(`Couldn't fetch ${url} (HTTP ${res.status}).`);
+  const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+  doc.querySelectorAll('script, style, noscript, nav, header, footer, svg, form').forEach((el) => el.remove());
+  const root = doc.querySelector('main, article, [role="main"]') ?? doc.body;
+  return { url: res.url, title: doc.title, text: (root?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 120_000) };
+}
+
+const ops = { claude, nanoAvailability, nanoPrompt, readImage, fetchText };
 
 chrome.runtime.onMessage.addListener((message, _sender, reply) => {
   if (message?.target !== 'offscreen' || !ops[message.op]) return false;

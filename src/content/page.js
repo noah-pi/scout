@@ -36,7 +36,7 @@
     return [...forms].map((f) => { try { return new URL(f.action || location.href).hostname; } catch { return ''; } }).filter(Boolean);
   };
 
-  const extract = ({ deep = false } = {}) => {
+  const extract = ({ deep = false, links = false } = {}) => {
     const page = {
       title: document.title,
       description: document.querySelector('meta[name="description"]')?.content ?? '',
@@ -45,6 +45,7 @@
       formHosts: formHosts(),
     };
     if (deep) page.text = (document.body?.innerText ?? '').slice(0, 20000);
+    if (links) page.links = [...document.querySelectorAll('a[href]')].slice(0, 600).map((a) => ({ text: text(a).slice(0, 80), href: a.getAttribute('href') }));
     return page;
   };
 

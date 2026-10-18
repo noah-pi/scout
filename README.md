@@ -26,6 +26,8 @@ The manifest carries a fixed `key`, so the extension ID (and the memory stored u
 | **Investigate** | A button in the panel. Sends Claude the page's fields plus its visible text (redacted, capped at 6,000 characters) at high effort and shows a verdict, a short summary and reasons. |
 | **Census (Reddit)** | Reads the thread already on screen (new and old Reddit) and reports patterns across accounts: near-identical wording from different accounts (marked on the page as "similar wording"), Reddit's generated usernames, bursts of posting. On request it looks up public profiles through your own session (at most 40, slowly, cached for a week) for account age, same-week creation and karma. **Analyze pattern** sends the thread to Opus with usernames replaced by A1, A2…. Scout describes the thread; it never labels one person a bot. |
 | **Provenance** | Right-click any image → **Check image with Scout**. Reads C2PA Content Credentials with Adobe's c2pa-web (in the offscreen document; the 9 MB WASM loads only on first use), plus unsigned labels: IPTC digital source type, Stable Diffusion and ComfyUI settings in PNGs, generator names, and what looks like China's AIGC label. Tells apart an edited picture from an edited credential. For Google-hosted images it also checks the original-size file, since the displayed copy is stripped. "Nothing found" is said as exactly that. |
+| **Ask Scout** | Right-click a link → **Check this link with Scout**: disguised destinations (`brand.com@elsewhere`), bare IPs, shorteners, lookalikes, punycode, domain age. Local, no model call. Select text → **Is this a scam? Ask Scout**: Haiku judges the message (redacted). |
+| **Fine print** | **Read the fine print** finds the page's privacy policy and terms (in several languages), fetches them without cookies, and has Haiku pull out up to eight points: data selling, AI training, tracking, arbitration, auto-renewal, retention, deletion, opt-out. Every point carries a verbatim quote, and Scout checks each quote against the fetched text; one it can't find is marked so. |
 | **Spoiler shield** | List shows and films with how far you've watched. Any passage that mentions one (or an alias, such as a character's name) is blurred the moment it appears. Haiku then judges each batch against your progress; clean mentions are revealed, spoilers stay behind a click-to-reveal label. Verdicts are cached for 30 days. With cloud checks off, or in "hide every mention" mode, every mention stays hidden. |
 | **Receipts** | Every request that leaves the browser on Scout's behalf, listed in the panel with what was sent, why and what it cost. |
 | **Memory** | Sites you trust and alerts you dismiss. Trust lapses if a domain's registration date changes (expired and re-bought) or after a year. Hard red flags can't be dismissed; only trusting the site clears them. |
@@ -96,7 +98,7 @@ Off until you turn them on. In the panel, open **Models → Settings**, paste an
 3. ~~Escalation engine live: Gemini Nano tier, Claude tiers, daily budget meter, Investigate~~
 4. ~~Census: Reddit thread coordination scoring~~
 5. ~~Provenance: c2pa-web reading, IPTC and generator labels, original-file retry for Google-hosted images~~ (relaying Chrome's own SynthID/C2PA result has no extension API yet)
-6. Ask Scout (right-click), Fine print reader on sign-up and checkout pages
+6. ~~Ask Scout (right-click links and text), fine print reader with quote checking~~
 
 ## Licenses of bundled data
 

@@ -70,7 +70,11 @@ button.link { border: 0; padding: 0; color: var(--muted); text-decoration: under
 .images li { display: block; padding: 6px 0; }
 .images .headline { font-weight: 600; }
 .images .ai, .images .tampered { color: var(--stop); }
-.images .captured { color: var(--quiet); }
+.images .captured, .images .ok, .fine .good { color: var(--quiet); }
+.images .bad, .fine .bad { color: var(--stop); }
+.images .mixed { color: var(--note); }
+.fine li { display: block; padding: 4px 0; }
+.fine blockquote { margin: 2px 0 0 10px; color: var(--muted); font-style: italic; }
 .images p { margin: 2px 0; }
 .investigation { margin-top: 10px; padding: 10px; border: 1px solid var(--rule); border-radius: 6px; }
 .investigation p { margin: 4px 0; }

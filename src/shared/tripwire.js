@@ -53,7 +53,7 @@ export function findLookalike(host, protectedDomains) {
     if (name === targetName) return { kind: 'other-suffix', target };
     if (skeleton(name) === skeleton(targetName)) return { kind: 'confusable', target };
     if (targetName.length >= 5 && editDistance(name, targetName) === 1) return { kind: 'typo', target };
-    if (targetName.length >= 4 && subLabels.some((l) => l === targetName || l.startsWith(`${targetName}-`))) {
+    if (targetName.length >= 4 && subLabels.some((l) => l.split('-').includes(targetName))) {
       return { kind: 'brand-in-subdomain', target };
     }
     // paypal-login.com, secure-chase.net. Hyphen-separated parts only, so

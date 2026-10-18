@@ -31,6 +31,7 @@ test('findLookalike flags imitations and leaves the real sites alone', () => {
   assert.deepEqual(findLookalike('paypa1.com', DEFAULT_PROTECTED), { kind: 'confusable', target: 'paypal.com' });
   assert.deepEqual(findLookalike('amazom.com', DEFAULT_PROTECTED), { kind: 'typo', target: 'amazon.com' });
   assert.deepEqual(findLookalike('paypal.com.secure-login.io', DEFAULT_PROTECTED), { kind: 'brand-in-subdomain', target: 'paypal.com' });
+  assert.deepEqual(findLookalike('secure-paypal.com.verify.example', DEFAULT_PROTECTED), { kind: 'brand-in-subdomain', target: 'paypal.com' });
   assert.deepEqual(findLookalike('www.amazon.co.uk', DEFAULT_PROTECTED), { kind: 'other-suffix', target: 'amazon.com' });
   assert.deepEqual(findLookalike('paypal-login.github.io', DEFAULT_PROTECTED), { kind: 'brand-in-name', target: 'paypal.com' });
   assert.deepEqual(findLookalike('secure-chase.net', DEFAULT_PROTECTED), { kind: 'brand-in-name', target: 'chase.com' });

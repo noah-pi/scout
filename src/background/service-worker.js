@@ -4,7 +4,9 @@ import { registrableDomain } from '../shared/tripwire.js';
 import { addReceipt, dropTab, emptyTab, getReceipts, getTab, updateTab } from './store.js';
 import { ageFlags, localFlags, registrationOf } from './tripwire.js';
 import * as memory from './memory.js';
-import { analyzeThread, checkSpoilers, escalate, investigate, nanoStatus, offscreen } from './escalate.js';
+import { analyzeThread, askAboutText, checkSpoilers, escalate, investigate, nanoStatus, offscreen, readFinePrint } from './escalate.js';
+import { policyLinks } from '../shared/fineprint.js';
+import { linkFindings } from '../shared/links.js';
 import { originalUrl, summarizeProvenance } from '../shared/provenance.js';
 import { getSpend, publicSettings, saveSettings } from './settings.js';
 import { pageFlags } from '../shared/assessment.js';
@@ -60,6 +62,8 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => 
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({ id: 'scout-image', title: 'Check image with Scout', contexts: ['image'] });
+  chrome.contextMenus.create({ id: 'scout-link', title: 'Check this link with Scout', contexts: ['link'] });
+  chrome.contextMenus.create({ id: 'scout-text', title: 'Is this a scam? Ask Scout', contexts: ['selection'] });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -67,7 +71,16 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   // Opening the panel needs the click's user gesture, so it comes first.
   chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
   if (info.menuItemId === 'scout-image' && info.srcUrl) handlers.checkImage({ tabId: tab.id, url: info.srcUrl }).catch(() => {});
+  if (info.menuItemId === 'scout-link' && info.linkUrl) handlers.checkLink({ tabId: tab.id, url: info.linkUrl }).catch(() => {});
+  if (info.menuItemId === 'scout-text' && info.selectionText) handlers.askText({ tabId: tab.id, text: info.selectionText }).catch(() => {});
 });
+
+function addAsked(tabId, entry) {
+  return updateTab(tabId, (s) => {
+    s.asked = [entry, ...(s.asked ?? [])].slice(0, 6);
+    return s;
+  }).then(() => entry);
+}
 
 const hasAiHints = (meta) => Boolean(meta?.sources?.length || meta?.sdParameters || meta?.comfyWorkflow || meta?.aigcLabel || meta?.generators?.length);
 
@@ -332,6 +345,41 @@ const handlers = {
     }
     await record(entry);
     return entry;
+  },
+
+  // Ask Scout: links and selected text, kept per tab as a short list.
+  async checkLink({ tabId, url }) {
+    const { host, domain, findings } = linkFindings(url, await memory.protectedDomains());
+    if (domain && /[a-z]/i.test(domain) && !domain.startsWith('[') && !(await memory.isTrusted(domain))) {
+      const registered = await registrationOf(host).catch(() => null);
+      for (const f of ageFlags(registered)) findings.push({ severity: f.severity, text: f.text });
+    }
+    const hard = findings.some((f) => f.severity === 'hard');
+    const entry = { kind: 'link', subject: url, tone: hard ? 'bad' : findings.length ? 'mixed' : 'ok', headline: hard ? 'Be careful with this link.' : findings.length ? 'Worth a look before you click.' : 'Nothing wrong found locally.', lines: findings.map((f) => f.text), at: Date.now() };
+    return addAsked(tabId, entry);
+  },
+
+  async askText({ tabId, text }) {
+    const state = await getTab(tabId);
+    const result = await askAboutText(String(text), state.host || 'page');
+    const headline = result.declined
+      ? `The model couldn't assess this (${result.declined}).`
+      : { likely_scam: `Likely a scam${result.impersonating ? `, posing as ${result.impersonating}` : ''}.`, unclear: "Can't tell.", likely_safe: 'Nothing scam-like found.' }[result.verdict];
+    const tone = result.verdict === 'likely_scam' ? 'bad' : result.verdict === 'unclear' ? 'mixed' : 'ok';
+    return addAsked(tabId, { kind: 'text', subject: String(text).slice(0, 140), tone, headline, lines: result.reasons ?? [], at: Date.now() });
+  },
+
+  async finePrint({ tabId }) {
+    const state = await getTab(tabId);
+    if (!state.host) throw new Error('No page to read.');
+    const { links = [] } = (await chrome.tabs.sendMessage(tabId, { type: 'extract', links: true }, { frameId: 0 }).catch(() => ({}))) ?? {};
+    const urls = policyLinks(links, state.url);
+    if (!urls.length) throw new Error("Couldn't find a privacy policy or terms link on this page.");
+    const found = await readFinePrint(registrableDomain(state.host), urls);
+    return updateTab(tabId, (s) => {
+      if (s.host === state.host) s.finePrint = found;
+      return s;
+    });
   },
 
   getSpoilers: async () => (await chrome.storage.local.get('spoilers')).spoilers ?? { enabled: false, mode: 'ai', entries: [] },
