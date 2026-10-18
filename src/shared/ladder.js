@@ -10,7 +10,7 @@
 export const DISMISS_MUTE_AFTER = 3;
 
 export function assess({ stakes = {}, flags = [], dismissals = {} }) {
-  const highStakes = Boolean(stakes.password || stakes.payment);
+  const highStakes = Boolean(stakes.password || stakes.payment || stakes.otp || stakes.seed);
   const hard = flags.filter((f) => f.severity === 'hard');
   const soft = flags.filter((f) => f.severity === 'soft' && (dismissals[f.kind] ?? 0) < DISMISS_MUTE_AFTER);
 

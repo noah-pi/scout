@@ -18,6 +18,11 @@ test('a hard flag without stakes is a note', () => {
   assert.equal(assess({ flags: [hard] }).level, 'note');
 });
 
+test('one-time codes and recovery phrases count as high stakes', () => {
+  assert.equal(assess({ stakes: { otp: true }, flags: [hard] }).level, 'stop');
+  assert.equal(assess({ stakes: { seed: true }, flags: [soft] }).escalate, 'tier3');
+});
+
 test('soft flags alone stay quiet until stakes rise', () => {
   assert.equal(assess({ flags: [soft] }).level, 'quiet');
   assert.equal(assess({ stakes: { password: true }, flags: [soft] }).level, 'note');

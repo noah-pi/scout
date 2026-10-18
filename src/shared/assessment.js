@@ -155,6 +155,9 @@ export function pageFlags(registrable, page, protectedDomains) {
       break;
     }
   }
+  if (page.seedPhrase) {
+    flags.push({ kind: 'seed-phrase', severity: 'hard', text: 'The page asks for a wallet recovery phrase. Legitimate wallets never ask for it on a web page.' });
+  }
   if (page.hiddenPrompt) {
     flags.push({ kind: 'hidden-ai-text', severity: 'soft', text: 'The page hides text addressed to AI assistants.' });
   }

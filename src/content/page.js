@@ -54,6 +54,7 @@
       labels: [...document.querySelectorAll('input:not([type="hidden"]), select')].slice(0, 12).map(labelFor).filter(Boolean),
       formHosts: formHosts(),
       hiddenPrompt: hiddenPrompt(),
+      seedPhrase: [...document.querySelectorAll('input, textarea')].some((f) => SEED.test(describeField(f))),
     };
     if (deep) page.text = (document.body?.innerText ?? '').slice(0, 20000);
     if (links) page.links = [...document.querySelectorAll('a[href]')].slice(0, 600).map((a) => ({ text: text(a).slice(0, 80), href: a.getAttribute('href') }));
@@ -66,17 +67,52 @@
     return false;
   });
 
-  let reported = { password: false, payment: false };
+  // What a field asks for. Recovery phrases matter most: legitimate wallets
+  // never ask for one on a web page.
+  const OTP = /\b(otp|one[- ]?time|2fa|two[- ]factor|verification code|auth(entication)? code|sms code|passcode)\b/i;
+  const SEED = /seed phrase|recovery phrase|secret (recovery )?phrase|mnemonic|wallet phrase|private key|\b(12|24)[- ]word/i;
+  const describeField = (el) => [labelFor(el), el.name, el.id, el.getAttribute('autocomplete')].filter(Boolean).join(' ');
+
+  function kindsOf(el) {
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return {};
+    const about = describeField(el);
+    return {
+      password: el.type === 'password',
+      payment: el.matches?.(PAYMENT) ?? false,
+      otp: el.autocomplete === 'one-time-code' || OTP.test(about),
+      seed: SEED.test(about),
+    };
+  }
+
+  let reported = { password: false, payment: false, otp: false, seed: false };
+  const report = (found) => {
+    const fresh = Object.keys(reported).filter((k) => found[k] && !reported[k]);
+    if (!fresh.length) return;
+    for (const k of fresh) reported[k] = true;
+    send({ type: 'stakes', stakes: { ...reported }, page: extract() });
+  };
+
   const check = () => {
-    const now = {
+    const fields = [...document.querySelectorAll('input, textarea')];
+    report({
       password: Boolean(document.querySelector('input[type="password"]')),
       payment: Boolean(document.querySelector(PAYMENT)),
-    };
-    if ((now.password && !reported.password) || (now.payment && !reported.payment)) {
-      reported = { password: reported.password || now.password, payment: reported.payment || now.payment };
-      send({ type: 'stakes', stakes: reported, page: extract() });
-    }
+      otp: fields.some((f) => kindsOf(f).otp),
+      seed: fields.some((f) => kindsOf(f).seed),
+    });
   };
+
+  // The moment you click into a sensitive field, check it right away, even if
+  // the form appeared after load or inside a popup.
+  document.addEventListener(
+    'focusin',
+    (event) => {
+      const el = event.composedPath?.()[0] ?? event.target;
+      const kinds = kindsOf(el);
+      if (Object.values(kinds).some(Boolean)) report(kinds);
+    },
+    true,
+  );
 
   // Login and checkout forms often render late; check again as the DOM settles.
   let pending = null;

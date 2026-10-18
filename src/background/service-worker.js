@@ -214,7 +214,7 @@ const handlers = {
     const tabId = sender.tab.id;
     return updateTab(tabId, async (current) => {
       const state = await atUrl(current, sender.tab.url, timeOrigin);
-      const isNew = (stakes.password && !state.stakes.password) || (stakes.payment && !state.stakes.payment);
+      const isNew = ['password', 'payment', 'otp', 'seed'].some((k) => stakes[k] && !state.stakes[k]);
       state.stakes = { ...state.stakes, ...stakes };
       if (isNew && state.host) {
         if (state.registeredAt === undefined) {

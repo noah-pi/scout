@@ -24,7 +24,7 @@ for (const [host, level, kind] of [
     const page = await visit(browser.context, `http://${host}:${server.port}/login`);
     const state = await browser.ext.tabState();
     assert.equal(state.host, host);
-    assert.deepEqual(state.stakes, { password: true, payment: false });
+    assert.deepEqual(state.stakes, { password: true, payment: false, otp: false, seed: false });
     assert.equal(state.level, level);
     if (kind) assert.ok(state.flags.some((f) => f.kind === kind), JSON.stringify(state.flags));
     await page.close();
