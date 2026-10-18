@@ -24,6 +24,7 @@ The manifest carries a fixed `key`, so the extension ID (and the memory stored u
 | **Ladder** | Turns stakes and flags into a badge (quiet, `•` note, `!` stop). On a login or payment page whose local signals are mixed (soft flags, no hard one), it climbs: **Gemini Nano** on the device first (free; names the brand the page presents as), then a **quick Claude check** if cloud checks are on and today's cap allows. When cloud checks are off, Scout logs a dry-run receipt instead, so you can see how often one would have run. |
 | **Page checks** | Free local checks once a page asks for a password or a card: a protected brand named in the title or headings on a different domain, and a sensitive form that posts to another site. |
 | **Investigate** | A button in the panel. Sends Claude the page's fields plus its visible text (redacted, capped at 6,000 characters) at high effort and shows a verdict, a short summary and reasons. |
+| **Census (Reddit)** | Reads the thread already on screen (new and old Reddit) and reports patterns across accounts: near-identical wording from different accounts (marked on the page as "similar wording"), Reddit's generated usernames, bursts of posting. On request it looks up public profiles through your own session (at most 40, slowly, cached for a week) for account age, same-week creation and karma. **Analyze pattern** sends the thread to Opus with usernames replaced by A1, A2…. Scout describes the thread; it never labels one person a bot. |
 | **Spoiler shield** | List shows and films with how far you've watched. Any passage that mentions one (or an alias, such as a character's name) is blurred the moment it appears. Haiku then judges each batch against your progress; clean mentions are revealed, spoilers stay behind a click-to-reveal label. Verdicts are cached for 30 days. With cloud checks off, or in "hide every mention" mode, every mention stays hidden. |
 | **Receipts** | Every request that leaves the browser on Scout's behalf, listed in the panel with what was sent, why and what it cost. |
 | **Memory** | Sites you trust and alerts you dismiss. Trust lapses if a domain's registration date changes (expired and re-bought) or after a year. Hard red flags can't be dismissed; only trusting the site clears them. |
@@ -82,6 +83,7 @@ Off until you turn them on. In the panel, open **Models → Settings**, paste an
 - Once, in testing, a page opened in the first moment after install showed no blocks at all, which suggests Chrome hadn't loaded the rules yet. It didn't recur.
 - The Gemini Nano tier is wired and feature-detected but untested on real hardware: headless Chromium reports the model as downloadable and can't run it.
 - The API key sits unencrypted in the extension's local storage. That's fine on your own machine; don't load Scout into a shared Chrome profile.
+- Reddit blocked logged-out `.json` requests in May 2026 and is closing its public API through March 2027. Census works from the page you're reading; profile lookups depend on your logged-in session still being served, and stop the moment Reddit returns 403 or 429. Reddit's markup changes; the e2e fixture pins what Scout expects.
 - Chrome gives extensions no access to TLS certificates, so trust is tied to domain registration rather than the certificate.
 
 ## Roadmap
@@ -89,7 +91,7 @@ Off until you turn them on. In the panel, open **Models → Settings**, paste an
 1. ~~Shield, GPC, Tripwire (local), badge, receipts, memory~~
 2. ~~EasyPrivacy, consent-banner auto-reject, the full Public Suffix List, Safe Browsing state~~
 3. ~~Escalation engine live: Gemini Nano tier, Claude tiers, daily budget meter, Investigate~~
-4. Census: Reddit thread coordination scoring
+4. ~~Census: Reddit thread coordination scoring~~
 5. Provenance: relay Chrome's C2PA and SynthID results; own c2pa-js reading and IPTC labels for the rest
 6. Ask Scout (right-click), Fine print reader on sign-up and checkout pages
 

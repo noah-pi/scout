@@ -91,6 +91,7 @@ async function render() {
   $('nano').textContent = NANO[nano] ?? `On-device model: ${nano}.`;
   $('nano-download').hidden = nano !== 'downloadable';
   fillSettings(settings);
+  renderCensus(tab.census);
   renderSpoilers(tab.spoilersHidden ?? 0);
 
   $('receipts').replaceChildren(
@@ -214,6 +215,42 @@ ask({ type: 'getSpoilers' }).then((s) => {
   spoilers = s;
   renderSpoilers();
 });
+
+const COORDINATION = { none: 'No sign of coordination', weak: 'Weak signs of coordination', moderate: 'Moderate signs of coordination', strong: 'Strong signs of coordination' };
+
+function renderCensus(census) {
+  $('census').hidden = !census;
+  if (!census) return;
+  const verdict = { none: 'Nothing unusual across accounts.', some: 'Some patterns across accounts.', notable: 'Several patterns line up across accounts.' }[census.level];
+  $('census-summary').textContent = `${verdict} ${census.comments} comments from ${census.authors} accounts${census.checked ? `, ${census.checked} checked` : ''}.`;
+  $('census-notes').replaceChildren(...census.notes.map((n) => item(span(n))));
+  const a = census.analysis;
+  $('census-analysis').hidden = !a;
+  if (a) {
+    const lines = a.declined ? [`The model couldn't assess this thread (${a.declined}).`] : [`${COORDINATION[a.coordination]}.`, a.summary, ...a.patterns];
+    $('census-analysis').replaceChildren(...lines.filter(Boolean).map((l) => Object.assign(document.createElement('p'), { textContent: l })),
+      Object.assign(document.createElement('p'), { className: 'muted', textContent: `${a.model} · ${new Date(a.at).toLocaleTimeString()}` }));
+  }
+}
+
+async function busy(button, label, work) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = label;
+  try {
+    await work();
+  } catch (error) {
+    $('census-analysis').hidden = false;
+    $('census-analysis').textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+    render();
+  }
+}
+
+$('census-profiles').onclick = (e) => busy(e.target, 'Checking…', async () => ask({ type: 'censusProfiles', tabId: await activeTabId() }));
+$('census-analyze').onclick = (e) => busy(e.target, 'Analyzing…', async () => ask({ type: 'censusAnalyze', tabId: await activeTabId() }));
 
 $('chrome-settings').onclick = () => ask({ type: 'openChromeSecurity' });
 

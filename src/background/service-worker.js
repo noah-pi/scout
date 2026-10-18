@@ -1,10 +1,10 @@
 import { assess } from '../shared/ladder.js';
 import { ownerIndex, trackerFor } from '../shared/trackers.js';
 import { registrableDomain } from '../shared/tripwire.js';
-import { dropTab, emptyTab, getReceipts, getTab, updateTab } from './store.js';
+import { addReceipt, dropTab, emptyTab, getReceipts, getTab, updateTab } from './store.js';
 import { ageFlags, localFlags, registrationOf } from './tripwire.js';
 import * as memory from './memory.js';
-import { checkSpoilers, escalate, investigate, nanoStatus } from './escalate.js';
+import { analyzeThread, checkSpoilers, escalate, investigate, nanoStatus } from './escalate.js';
 import { getSpend, publicSettings, saveSettings } from './settings.js';
 import { pageFlags } from '../shared/assessment.js';
 import { normalizeEntry } from '../shared/spoilers.js';
@@ -255,6 +255,42 @@ const handlers = {
       });
     }
     return verdicts;
+  },
+
+  // Census: the Reddit content script reports the thread; the panel asks for
+  // profile lookups and the Opus analysis.
+  async census({ report }, sender) {
+    if (!sender.tab) return;
+    const keep = {
+      level: ['none', 'some', 'notable'].includes(report?.level) ? report.level : 'none',
+      notes: (report?.notes ?? []).slice(0, 8).map(String),
+      authors: Number(report?.authors) || 0,
+      comments: Number(report?.comments) || 0,
+      checked: Number(report?.checked) || 0,
+      clusters: (report?.clusters ?? []).length,
+    };
+    return updateTab(sender.tab.id, async (current) => {
+      const state = await atUrl(current, sender.tab.url);
+      state.census = { ...state.census, ...keep };
+      return state;
+    });
+  },
+
+  async censusProfiles({ tabId }) {
+    const result = await chrome.tabs.sendMessage(tabId, { type: 'censusProfiles' }, { frameId: 0 });
+    if (result?.checked) await addReceipt({ service: 'reddit.com', sent: `${result.checked} public profiles, via your session`, reason: 'You asked Scout to check thread accounts' });
+    return result;
+  },
+
+  async censusAnalyze({ tabId }) {
+    const evidence = await chrome.tabs.sendMessage(tabId, { type: 'censusEvidence' }, { frameId: 0 });
+    if (!evidence?.comments?.length) throw new Error('No thread to analyze on this page.');
+    const state = await getTab(tabId);
+    const analysis = await analyzeThread(evidence, state.host);
+    return updateTab(tabId, (s) => {
+      if (s.host === state.host) s.census = { ...s.census, analysis };
+      return s;
+    });
   },
 
   getSpoilers: async () => (await chrome.storage.local.get('spoilers')).spoilers ?? { enabled: false, mode: 'ai', entries: [] },

@@ -6,6 +6,7 @@ import {
   NANO_BRAND_PROMPT, buildEvidence, buildRequest, costOf, nanoFlags, parseVerdict, verdictFlags,
 } from '../shared/assessment.js';
 import { buildSpoilerRequest, parseSpoilerResults } from '../shared/spoilers.js';
+import { buildThreadRequest, parseThreadVerdict } from '../shared/census.js';
 import { registrableDomain } from '../shared/tripwire.js';
 import { addReceipt } from './store.js';
 import { addSpend, getSettings, getSpend } from './settings.js';
@@ -140,6 +141,18 @@ export async function checkSpoilers(items, watchlist, host) {
   const kept = Object.entries(next).filter(([, v]) => now - v.at < SPOILER_TTL).sort((a, b) => b[1].at - a[1].at).slice(0, 5000);
   await chrome.storage.local.set({ spoilerCache: Object.fromEntries(kept) });
   return { ...verdicts, ...fresh };
+}
+
+// Census: the thread pattern, judged by the critical-reasoning model.
+export async function analyzeThread(evidence, host) {
+  const settings = await getSettings();
+  if (!settings.apiKey) throw new Error('Add an API key in Settings first.');
+  const model = settings.deepModel;
+  const response = await offscreen('claude', { apiKey: settings.apiKey, baseURL: settings.baseURL, request: buildThreadRequest(model, evidence) });
+  const usd = costOf(model, response.usage);
+  await addSpend(usd);
+  await addReceipt({ service: `claude (${model})`, sent: `${host}: ${evidence.comments.length} comments, authors pseudonymized`, reason: 'You asked Scout to analyze the thread', usd });
+  return { ...parseThreadVerdict(response), model, at: Date.now() };
 }
 
 export async function investigate(state, page) {

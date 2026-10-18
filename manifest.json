@@ -84,6 +84,15 @@
       ],
       "run_at": "document_start",
       "all_frames": false
+    },
+    {
+      "matches": [
+        "*://*.reddit.com/*"
+      ],
+      "js": [
+        "dist/reddit.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "side_panel": {
