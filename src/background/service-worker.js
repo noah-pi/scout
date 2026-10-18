@@ -8,6 +8,8 @@ import { analyzeThread, askAboutText, checkSpoilers, escalate, investigate, nano
 import { policyLinks } from '../shared/fineprint.js';
 import { linkFindings } from '../shared/links.js';
 import { auditAll } from '../shared/extensions.js';
+import { shopFlags } from '../shared/shops.js';
+import { ageInDays } from '../shared/tripwire.js';
 import { originalUrl, summarizeProvenance } from '../shared/provenance.js';
 import { getSpend, publicSettings, saveSettings } from './settings.js';
 import { pageFlags } from '../shared/assessment.js';
@@ -448,6 +450,31 @@ const handlers = {
   },
 
   untrustDomain: ({ domain }) => memory.untrust(String(domain)),
+
+  // Fake-shop check. The domain-age lookup leaves the browser, so it runs only
+  // once the page already shows at least one warning sign.
+  async shop({ facts, timeOrigin }, sender) {
+    if (!sender.tab || !facts?.isShop) return;
+    const clean = {
+      isShop: true,
+      legalLinks: Number(facts.legalLinks) || 0,
+      contact: Boolean(facts.contact),
+      seals: (facts.seals ?? []).slice(0, 10).map((s) => ({ name: String(s.name).slice(0, 40), linked: Boolean(s.linked) })),
+      text: String(facts.text ?? '').slice(0, 20000),
+      discounts: (facts.discounts ?? []).slice(0, 200).map(Number).filter(Number.isFinite),
+    };
+    const tabId = sender.tab.id;
+    return updateTab(tabId, async (current) => {
+      const state = await atUrl(current, sender.tab.url, timeOrigin);
+      let flags = shopFlags(clean, null);
+      if (flags.length && state.host && !(await memory.isTrusted(registrableDomain(state.host)))) {
+        state.registeredAt ??= await registrationOf(state.host);
+        flags = shopFlags(clean, state.registeredAt ? ageInDays(state.registeredAt) : null);
+      }
+      state.flags = mergeFlags(state.flags.filter((f) => !/^(shop:|fake-shop)/.test(f.kind)), flags);
+      return reassess(tabId, state);
+    });
+  },
 
   getSpoilers: async () => (await chrome.storage.local.get('spoilers')).spoilers ?? { enabled: false, mode: 'ai', entries: [] },
 

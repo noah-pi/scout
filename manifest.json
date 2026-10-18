@@ -77,7 +77,7 @@
         "<all_urls>"
       ],
       "js": [
-        "src/content/page.js"
+        "dist/page.js"
       ],
       "run_at": "document_start"
     },

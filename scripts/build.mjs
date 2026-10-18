@@ -7,6 +7,7 @@ const shared = { bundle: true, minify: true, legalComments: 'inline', logLevel: 
 
 await Promise.all([
   // Content script: Chrome can't load ES modules there, so it ships as an IIFE.
+  build({ ...shared, entryPoints: ['src/content/page.js'], outfile: 'dist/page.js', format: 'iife' }),
   build({ ...shared, entryPoints: ['src/content/consent.js'], outfile: 'dist/consent.js', format: 'iife' }),
   build({ ...shared, entryPoints: ['src/content/spoilers.js'], outfile: 'dist/spoilers.js', format: 'iife' }),
   build({ ...shared, entryPoints: ['src/content/reddit.js'], outfile: 'dist/reddit.js', format: 'iife' }),

@@ -23,6 +23,7 @@ The manifest carries a fixed `key`, so the extension ID (and the memory stored u
 | **Global Privacy Control** | Sends `Sec-GPC: 1` on every request and sets `navigator.globalPrivacyControl`. Under CCPA and several other state laws, sites must honor it as an opt-out of sale and sharing. |
 | **Fingerprint watch** | Notes when a page reads canvas, WebGL GPU strings, audio or font probes. It reports and never blocks. Login pages do this routinely for fraud checks, so it never moves the badge. |
 | **Tripwire** | Local lookalike detection (confusable characters, one-letter typos, a brand in a subdomain or a hyphenated name, punycode) against your banks, stores and trusted sites, using the full Public Suffix List. Domain age comes from RDAP, and only once a page shows a password or payment field. |
+| **Fake-shop check** | On pages that look like a shop (multilingual "add to cart", product markup): no contact details or legal notice, trust seals that don't link to their issuer, only hard-to-reverse payment (bank transfer, crypto, gift cards), discounts of 70% or more across the page. Domain age is looked up only once a sign appears. Two or more signs (with a young domain or risky payment), or any three, make a hard flag: a note while browsing, a stop at checkout. Modeled on Germany's Fakeshop-Finder and Austria's Watchlist Internet. |
 | **Chrome relay** | Shows whether Chrome's Safe Browsing is on. Extensions can't see whether it's Enhanced protection (the mode with on-device scam detection), so the panel links to the setting. |
 | **Ladder** | Turns stakes and flags into a badge (quiet, `•` note, `!` stop). On a login or payment page whose local signals are mixed (soft flags, no hard one), it climbs: **Gemini Nano** on the device first (free; names the brand the page presents as), then a **quick Claude check** if cloud checks are on and today's cap allows. When cloud checks are off, Scout logs a dry-run receipt instead, so you can see how often one would have run. |
 | **Page checks** | Free local checks once a page asks for a password, a card, a one-time code or a wallet recovery phrase (checked on load, as the page changes, and the moment you click into such a field): a protected brand named in the title or headings on a different domain, a sensitive form that posts to another site, hidden text addressed to AI assistants (prompt injection aimed at tools like Scout), and any request for a recovery phrase, which is a hard stop on its own. Hidden text never reaches a model. |
@@ -47,7 +48,7 @@ scripts/update-lists.mjs  refreshes rules/ and data/ from upstream (needs networ
 scripts/build.mjs         rebuilds dist/ from node_modules (offline)
 src/shared/             pure logic: ladder, tripwire, trust, tracker naming (unit-tested)
 src/background/         service worker, storage, memory, network lookups
-src/content/            main-world.js (GPC + fingerprint hooks), page.js (stakes, page fields), consent.js (autoconsent)
+src/content/            main-world.js (GPC + fingerprint hooks); page.js (stakes, page fields, shop facts), consent.js, spoilers.js, reddit.js, slop.js (all bundled to dist/)
 src/offscreen/          model calls: Anthropic SDK and Chrome's Prompt API
 src/sidepanel/          the panel
 tests/                  node:test
