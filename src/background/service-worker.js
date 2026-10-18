@@ -4,7 +4,8 @@ import { registrableDomain } from '../shared/tripwire.js';
 import { addReceipt, dropTab, emptyTab, getReceipts, getTab, updateTab } from './store.js';
 import { ageFlags, localFlags, registrationOf } from './tripwire.js';
 import * as memory from './memory.js';
-import { analyzeThread, checkSpoilers, escalate, investigate, nanoStatus } from './escalate.js';
+import { analyzeThread, checkSpoilers, escalate, investigate, nanoStatus, offscreen } from './escalate.js';
+import { originalUrl, summarizeProvenance } from '../shared/provenance.js';
 import { getSpend, publicSettings, saveSettings } from './settings.js';
 import { pageFlags } from '../shared/assessment.js';
 import { normalizeEntry } from '../shared/spoilers.js';
@@ -56,6 +57,19 @@ const BADGE = {
 };
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({ id: 'scout-image', title: 'Check image with Scout', contexts: ['image'] });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (!tab?.id) return;
+  // Opening the panel needs the click's user gesture, so it comes first.
+  chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
+  if (info.menuItemId === 'scout-image' && info.srcUrl) handlers.checkImage({ tabId: tab.id, url: info.srcUrl }).catch(() => {});
+});
+
+const hasAiHints = (meta) => Boolean(meta?.sources?.length || meta?.sdParameters || meta?.comfyWorkflow || meta?.aigcLabel || meta?.generators?.length);
 
 async function freshTab(url, committedAt) {
   const state = emptyTab(url);
@@ -291,6 +305,33 @@ const handlers = {
       if (s.host === state.host) s.census = { ...s.census, analysis };
       return s;
     });
+  },
+
+  // Provenance: credentials and metadata for one image, on request.
+  async checkImage({ tabId, url }) {
+    const pending = { url, tone: 'pending', headline: 'Checking…', lines: [], at: Date.now() };
+    const record = (entry) =>
+      updateTab(tabId, (s) => {
+        s.images = [entry, ...(s.images ?? []).filter((i) => i.url !== url)].slice(0, 5);
+        return s;
+      });
+    await record(pending);
+    let entry;
+    try {
+      let read = await offscreen('readImage', { url });
+      let triedOriginal = false;
+      const original = read.store ? null : originalUrl(url);
+      if (original) {
+        const better = await offscreen('readImage', { url: original }).catch(() => null);
+        triedOriginal = true;
+        if (better?.store || hasAiHints(better?.meta)) read = better;
+      }
+      entry = { url, ...summarizeProvenance({ ...read, triedOriginal }), at: Date.now() };
+    } catch (error) {
+      entry = { url, tone: 'none', headline: "Couldn't check this image.", lines: [error.message], at: Date.now() };
+    }
+    await record(entry);
+    return entry;
   },
 
   getSpoilers: async () => (await chrome.storage.local.get('spoilers')).spoilers ?? { enabled: false, mode: 'ai', entries: [] },

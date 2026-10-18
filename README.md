@@ -25,6 +25,7 @@ The manifest carries a fixed `key`, so the extension ID (and the memory stored u
 | **Page checks** | Free local checks once a page asks for a password or a card: a protected brand named in the title or headings on a different domain, and a sensitive form that posts to another site. |
 | **Investigate** | A button in the panel. Sends Claude the page's fields plus its visible text (redacted, capped at 6,000 characters) at high effort and shows a verdict, a short summary and reasons. |
 | **Census (Reddit)** | Reads the thread already on screen (new and old Reddit) and reports patterns across accounts: near-identical wording from different accounts (marked on the page as "similar wording"), Reddit's generated usernames, bursts of posting. On request it looks up public profiles through your own session (at most 40, slowly, cached for a week) for account age, same-week creation and karma. **Analyze pattern** sends the thread to Opus with usernames replaced by A1, A2…. Scout describes the thread; it never labels one person a bot. |
+| **Provenance** | Right-click any image → **Check image with Scout**. Reads C2PA Content Credentials with Adobe's c2pa-web (in the offscreen document; the 9 MB WASM loads only on first use), plus unsigned labels: IPTC digital source type, Stable Diffusion and ComfyUI settings in PNGs, generator names, and what looks like China's AIGC label. Tells apart an edited picture from an edited credential. For Google-hosted images it also checks the original-size file, since the displayed copy is stripped. "Nothing found" is said as exactly that. |
 | **Spoiler shield** | List shows and films with how far you've watched. Any passage that mentions one (or an alias, such as a character's name) is blurred the moment it appears. Haiku then judges each batch against your progress; clean mentions are revealed, spoilers stay behind a click-to-reveal label. Verdicts are cached for 30 days. With cloud checks off, or in "hide every mention" mode, every mention stays hidden. |
 | **Receipts** | Every request that leaves the browser on Scout's behalf, listed in the panel with what was sent, why and what it cost. |
 | **Memory** | Sites you trust and alerts you dismiss. Trust lapses if a domain's registration date changes (expired and re-bought) or after a year. Hard red flags can't be dismissed; only trusting the site clears them. |
@@ -84,6 +85,8 @@ Off until you turn them on. In the panel, open **Models → Settings**, paste an
 - The Gemini Nano tier is wired and feature-detected but untested on real hardware: headless Chromium reports the model as downloadable and can't run it.
 - The API key sits unencrypted in the extension's local storage. That's fine on your own machine; don't load Scout into a shared Chrome profile.
 - Reddit blocked logged-out `.json` requests in May 2026 and is closing its public API through March 2027. Census works from the page you're reading; profile lookups depend on your logged-in session still being served, and stop the moment Reddit returns 403 or 429. Reddit's markup changes; the e2e fixture pins what Scout expects.
+- The C2PA signer isn't checked against the official trust list yet, so a valid signature shows the file is unaltered since signing, not who signed it. SynthID has no public API; Scout points to Google's tool instead.
+- `'wasm-unsafe-eval'` is in the extension's CSP so c2pa-web can compile its WASM. It permits WebAssembly only, not JavaScript eval.
 - Chrome gives extensions no access to TLS certificates, so trust is tied to domain registration rather than the certificate.
 
 ## Roadmap
@@ -92,11 +95,12 @@ Off until you turn them on. In the panel, open **Models → Settings**, paste an
 2. ~~EasyPrivacy, consent-banner auto-reject, the full Public Suffix List, Safe Browsing state~~
 3. ~~Escalation engine live: Gemini Nano tier, Claude tiers, daily budget meter, Investigate~~
 4. ~~Census: Reddit thread coordination scoring~~
-5. Provenance: relay Chrome's C2PA and SynthID results; own c2pa-js reading and IPTC labels for the rest
+5. ~~Provenance: c2pa-web reading, IPTC and generator labels, original-file retry for Google-hosted images~~ (relaying Chrome's own SynthID/C2PA result has no extension API yet)
 6. Ask Scout (right-click), Fine print reader on sign-up and checkout pages
 
 ## Licenses of bundled data
 
 - EasyPrivacy rules: GPLv3 / CC BY-SA 3.0 (EasyList authors), via uBlock Origin Lite (GPLv3)
 - Tracker Radar entity map: CC BY-NC-SA 4.0 (DuckDuckGo), fine for personal, non-commercial use
-- autoconsent: MPL-2.0 (DuckDuckGo) · tldts: MIT · Anthropic SDK: MIT
+- autoconsent: MPL-2.0 (DuckDuckGo) · tldts: MIT · Anthropic SDK: MIT · c2pa-web: MIT (Adobe)
+- Test images in `tests/fixtures/`: Source Kit samples, Apache-2.0

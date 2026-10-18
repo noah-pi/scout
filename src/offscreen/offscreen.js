@@ -3,6 +3,8 @@
 // SDK stays out of the service worker, and so slow calls outlive the worker's
 // idle timer.
 import { Anthropic } from '../../dist/anthropic.js';
+import { Context, Reader, createC2pa } from '../../dist/c2pa.js';
+import { sniffMetadata } from '../shared/provenance.js';
 
 function describe(error) {
   if (error instanceof Anthropic.AuthenticationError) return { kind: 'auth', message: 'The API key was rejected.' };
@@ -40,7 +42,47 @@ async function nanoPrompt({ system, prompt, schema }) {
   }
 }
 
-const ops = { claude, nanoAvailability, nanoPrompt };
+// c2pa-web starts its worker from a blob: URL, which extension pages may not
+// load, and only accepts a replacement URL over https. Hand it the packaged
+// copy of the same worker instead.
+const C2PA_WORKER = chrome.runtime.getURL('dist/c2pa/c2pa_worker.js');
+const NativeWorker = globalThis.Worker;
+globalThis.Worker = class extends NativeWorker {
+  constructor(url, options) {
+    const s = String(url);
+    super(s.startsWith('blob:') || s.startsWith('data:') ? C2PA_WORKER : url, s.startsWith('blob:') || s.startsWith('data:') ? { ...options, type: 'module' } : options);
+  }
+};
+
+let c2paReady = null;
+const c2pa = () =>
+  (c2paReady ??= WebAssembly.compileStreaming(fetch(chrome.runtime.getURL('dist/c2pa/c2pa_bg.wasm'))).then((wasmSrc) => createC2pa({ wasmSrc })));
+
+const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
+
+// Fetches an image and returns its bytes' metadata plus any C2PA manifest
+// store. Runs here, not in the page, so the page never sees the check.
+async function readImage({ url }) {
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) throw new Error(`Couldn't fetch the image (HTTP ${res.status}).`);
+  const blob = await res.blob();
+  if (blob.size > MAX_IMAGE_BYTES) throw new Error('Image is too large to check.');
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let store = null;
+  let c2paError = null;
+  try {
+    const reader = await Reader.fromBlob(await c2pa(), blob.type || undefined, blob, new Context({ verify: { verifyTrust: false } }));
+    if (reader) {
+      store = await reader.manifestStore();
+      await reader.free();
+    }
+  } catch (error) {
+    c2paError = String(error?.message ?? error);
+  }
+  return { url, type: blob.type, size: blob.size, store, c2paError, head: Array.from(bytes.subarray(0, 16)), meta: sniffMetadata(bytes) };
+}
+
+const ops = { claude, nanoAvailability, nanoPrompt, readImage };
 
 chrome.runtime.onMessage.addListener((message, _sender, reply) => {
   if (message?.target !== 'offscreen' || !ops[message.op]) return false;

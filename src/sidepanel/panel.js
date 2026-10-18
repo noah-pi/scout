@@ -92,6 +92,7 @@ async function render() {
   $('nano-download').hidden = nano !== 'downloadable';
   fillSettings(settings);
   renderCensus(tab.census);
+  renderImages(tab.images ?? []);
   renderSpoilers(tab.spoilersHidden ?? 0);
 
   $('receipts').replaceChildren(
@@ -215,6 +216,26 @@ ask({ type: 'getSpoilers' }).then((s) => {
   spoilers = s;
   renderSpoilers();
 });
+
+function renderImages(images) {
+  $('images').hidden = !images.length;
+  $('image-list').replaceChildren(
+    ...images.map((img) => {
+      const li = document.createElement('li');
+      let where = img.url;
+      try {
+        const u = new URL(img.url);
+        where = u.hostname + u.pathname.split('/').slice(-1)[0].slice(0, 40);
+      } catch {}
+      li.append(
+        Object.assign(document.createElement('p'), { className: `headline ${img.tone}`, textContent: img.headline }),
+        ...img.lines.map((l) => Object.assign(document.createElement('p'), { className: 'muted', textContent: l })),
+        Object.assign(document.createElement('p'), { className: 'muted', textContent: where }),
+      );
+      return li;
+    }),
+  );
+}
 
 const COORDINATION = { none: 'No sign of coordination', weak: 'Weak signs of coordination', moderate: 'Moderate signs of coordination', strong: 'Strong signs of coordination' };
 

@@ -67,6 +67,11 @@ button, .button {
 }
 button.link { border: 0; padding: 0; color: var(--muted); text-decoration: underline; font-size: 12px; }
 
+.images li { display: block; padding: 6px 0; }
+.images .headline { font-weight: 600; }
+.images .ai, .images .tampered { color: var(--stop); }
+.images .captured { color: var(--quiet); }
+.images p { margin: 2px 0; }
 .investigation { margin-top: 10px; padding: 10px; border: 1px solid var(--rule); border-radius: 6px; }
 .investigation p { margin: 4px 0; }
 details summary { cursor: pointer; color: var(--muted); }
