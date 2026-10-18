@@ -7,11 +7,13 @@
 //   rules/easylist-allow.json     its allow rules
 //   data/entities.json            domain → owning company (DuckDuckGo Tracker Radar, CC BY-NC-SA 4.0)
 //   data/ai-sites.json            AI-heavy sites for the search slop filter (laylavish HUGE AI Blocklist, CC0)
+//   data/c2pa-trust.pem           the official C2PA trust list (c2pa-org/conformance-public)
 import { writeFileSync } from 'node:fs';
 
 const UBOL = 'https://raw.githubusercontent.com/uBlockOrigin/uBOL-home/main/chromium/rulesets/main';
 const EASYPRIVACY = `${UBOL}/easyprivacy.json`;
 const EASYLIST = `${UBOL}/easylist.json`;
+const C2PA_TRUST = 'https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem';
 const AI_SITES = 'https://raw.githubusercontent.com/laylavish/uBlockOrigin-HUGE-AI-Blocklist/main/list_uBlacklist.txt';
 const ENTITY_MAP = 'https://raw.githubusercontent.com/duckduckgo/tracker-radar/main/build-data/generated/entity_map.json';
 
@@ -29,6 +31,12 @@ export function splitEasyPrivacy(rules) {
   const block = rules.filter((r) => r.action.type === 'block');
   const allow = rules.filter((r) => r.action.type === 'allow');
   return { block, allow };
+}
+
+// Keeps only the certificate blocks; the published list has "Subject" notes
+// between them.
+export function pemBlocks(text) {
+  return (text.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? []).join('\n') + '\n';
 }
 
 // uBlacklist format: match patterns (*://*.example.com/*) and /regex/ lines.
@@ -68,6 +76,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const aiSites = parseUBlacklist(await res.text());
   writeFileSync(out('data/ai-sites.json'), JSON.stringify(aiSites) + '\n');
   console.log(`ai sites: ${aiSites.domains.length} domains, ${aiSites.patterns.length} patterns`);
+
+  const trust = await fetch(C2PA_TRUST);
+  if (!trust.ok) throw new Error(`${C2PA_TRUST}: HTTP ${trust.status}`);
+  const pem = pemBlocks(await trust.text());
+  writeFileSync(out('data/c2pa-trust.pem'), pem);
+  console.log(`c2pa trust list: ${pem.split('BEGIN CERTIFICATE').length - 1} certificates`);
 
   const entities = compactEntities(await json(ENTITY_MAP));
   writeFileSync(out('data/entities.json'), JSON.stringify(entities) + '\n');

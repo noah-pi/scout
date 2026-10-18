@@ -58,6 +58,10 @@ let c2paReady = null;
 const c2pa = () =>
   (c2paReady ??= WebAssembly.compileStreaming(fetch(chrome.runtime.getURL('dist/c2pa/c2pa_bg.wasm'))).then((wasmSrc) => createC2pa({ wasmSrc })));
 
+// The official C2PA trust list, refreshed monthly by scripts/update-lists.mjs.
+let trustPem = null;
+const loadTrust = () => (trustPem ??= fetch(chrome.runtime.getURL('data/c2pa-trust.pem')).then((r) => r.text()));
+
 const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
 
 // Fetches an image and returns its bytes' metadata plus any C2PA manifest
@@ -71,7 +75,8 @@ async function readImage({ url }) {
   let store = null;
   let c2paError = null;
   try {
-    const reader = await Reader.fromBlob(await c2pa(), blob.type || undefined, blob, new Context({ verify: { verifyTrust: false } }));
+    const context = new Context({ verify: { verifyTrust: true }, trust: { trustAnchors: await loadTrust() } });
+    const reader = await Reader.fromBlob(await c2pa(), blob.type || undefined, blob, context);
     if (reader) {
       store = await reader.manifestStore();
       await reader.free();

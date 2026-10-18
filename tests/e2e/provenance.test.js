@@ -43,11 +43,11 @@ const check = async (path) => {
   return res.value;
 };
 
-test('a sealed camera capture verifies, with the trust-list caveat', async () => {
+test('a sealed, self-signed camera capture verifies; its signer is not on the trust list', async () => {
   const r = await check('/sealed.jpg');
   assert.equal(r.tone, 'captured', JSON.stringify(r));
   assert.match(r.lines[0], /Signed by Source Kit/);
-  assert.match(r.lines[1], /trust list/);
+  assert.match(r.lines[1], /isn't on the C2PA trust list/);
 });
 
 test('an edited picture and an edited credential are told apart', async () => {
@@ -55,6 +55,7 @@ test('an edited picture and an edited credential are told apart', async () => {
   assert.equal(altered.tone, 'tampered');
   assert.match(altered.headline, /picture was changed/);
   assert.match(altered.lines[0], /assertion\.dataHash\.mismatch/);
+  assert.ok(!altered.lines[0].includes('untrusted'), 'trust codes are reported separately');
 
   const attacked = await check('/attacked.jpg');
   assert.equal(attacked.tone, 'tampered');

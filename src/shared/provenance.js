@@ -123,8 +123,11 @@ export function summarizeProvenance({ store, meta = {}, c2paError = null, triedO
   if (store?.active_manifest) {
     const signer = manifest?.signature_info?.issuer ?? manifest?.signature_info?.common_name ?? 'an unknown signer';
     const tool = manifest?.claim_generator ? ` with ${String(manifest.claim_generator).replace(/\s*\(.*\)\s*$/, '')}` : '';
-    const failures = statusCodes(store);
-    if (store.validation_state === 'Invalid' || failures.length) {
+    // Trust codes say who signed; the rest say whether anything was altered.
+    const codes = statusCodes(store);
+    const untrusted = codes.some((c) => /^signingCredential\.(untrusted|invalid|revoked|expired)/.test(c));
+    const failures = codes.filter((c) => !/^signingCredential\.untrusted/.test(c));
+    if (failures.length || (store.validation_state === 'Invalid' && !untrusted)) {
       const pictureChanged = failures.some((c) => /dataHash\.mismatch|bmffHash\.mismatch|boxesHash\.mismatch/.test(c));
       const credentialChanged = failures.some((c) => /hashedURI\.mismatch|claimSignature\.mismatch|signature/.test(c));
       const headline = pictureChanged
@@ -137,7 +140,11 @@ export function summarizeProvenance({ store, meta = {}, c2paError = null, triedO
     const sources = manifestSources(manifest);
     const ai = sources.find((s) => AI_SOURCES[s]);
     lines.push(`Signed by ${signer}${tool}. Signature checks out.`);
-    if (store.validation_state !== 'Trusted') lines.push("The signer wasn't checked against the C2PA trust list, so this shows the file is unaltered since signing, not who signed it.");
+    lines.push(
+      untrusted
+        ? "The signer isn't on the C2PA trust list, so the file is unaltered since signing, but who signed it can't be confirmed."
+        : 'The signer is on the C2PA trust list.',
+    );
     if (ai) return { tone: 'ai', headline: `Content Credentials say this image was ${AI_SOURCES[ai]}.`, lines };
     if (sources.some((s) => CAPTURE_SOURCES.has(s))) return { tone: 'captured', headline: 'Content Credentials say this is a camera capture.', lines };
     return { tone: 'credentials', headline: 'Has Content Credentials.', lines };

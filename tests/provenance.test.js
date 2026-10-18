@@ -49,17 +49,19 @@ const manifest = (sourceType) => ({
   manifests: { m1: { claim_generator: 'Source Kit/0.7.0 (com.verify.camera)', signature_info: { issuer: 'Source Kit' }, assertions: [{ label: 'c2pa.actions.v2', data: { actions: [{ action: 'c2pa.created', digitalSourceType: `http://cv.iptc.org/newscodes/digitalsourcetype/${sourceType}` }] } }] } },
 });
 
-test('valid credentials: capture vs AI, and the trust-list caveat', () => {
-  const cam = summarizeProvenance({ store: manifest('digitalCapture') });
-  assert.equal(cam.tone, 'captured');
-  assert.match(cam.lines[0], /Signed by Source Kit with Source Kit\/0\.7\.0/);
-  assert.match(cam.lines[1], /trust list/);
+test('valid credentials: capture vs AI, trusted vs untrusted signer', () => {
+  const trusted = summarizeProvenance({ store: { ...manifest('digitalCapture'), validation_state: 'Trusted' } });
+  assert.equal(trusted.tone, 'captured');
+  assert.match(trusted.lines[0], /Signed by Source Kit with Source Kit\/0\.7\.0/);
+  assert.match(trusted.lines[1], /is on the C2PA trust list/);
+  const selfSigned = summarizeProvenance({ store: { ...manifest('digitalCapture'), validation_status: [{ code: 'signingCredential.untrusted' }] } });
+  assert.equal(selfSigned.tone, 'captured', 'an unknown signer is not tampering');
+  assert.match(selfSigned.lines[1], /can't be confirmed/);
   assert.equal(summarizeProvenance({ store: manifest('trainedAlgorithmicMedia') }).tone, 'ai');
-  assert.equal(summarizeProvenance({ store: { ...manifest('digitalCapture'), validation_state: 'Trusted' } }).lines.length, 1);
 });
 
 test('invalid credentials name what changed', () => {
-  const altered = summarizeProvenance({ store: { ...manifest('digitalCapture'), validation_state: 'Invalid', validation_status: [{ code: 'assertion.dataHash.mismatch' }] } });
+  const altered = summarizeProvenance({ store: { ...manifest('digitalCapture'), validation_state: 'Invalid', validation_status: [{ code: 'signingCredential.untrusted' }, { code: 'assertion.dataHash.mismatch' }] } });
   assert.equal(altered.tone, 'tampered');
   assert.match(altered.headline, /picture was changed/);
   const attacked = summarizeProvenance({ store: { active_manifest: 'm1', manifests: {}, validation_state: 'Invalid', validation_status: [{ code: 'assertion.hashedURI.mismatch' }] } });
