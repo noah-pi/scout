@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scout</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header>
+    <h1>Scout</h1>
+    <span id="level" class="level quiet">quiet</span>
+  </header>
+
+  <section>
+    <p id="host" class="host"></p>
+    <ul id="notes" class="notes"></ul>
+    <div class="actions">
+      <button id="trust" type="button">Trust this site</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Trackers blocked</h2>
+    <ul id="trackers" class="ledger"></ul>
+    <p id="fingerprinting" class="muted"></p>
+  </section>
+
+  <section>
+    <h2>Receipts</h2>
+    <p class="muted">Everything that left the browser on Scout's behalf. Dry runs show where a cloud check would have run.</p>
+    <ul id="receipts" class="receipts"></ul>
+  </section>
+
+  <section>
+    <h2>Memory</h2>
+    <div class="actions">
+      <button id="export" type="button">Export</button>
+      <label class="button">Import<input id="import" type="file" accept="application/json" hidden></label>
+    </div>
+  </section>
+
+  <script type="module" src="panel.js"></script>
+</body>
+</html>

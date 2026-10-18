@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Scout",
+  "version": "0.1.0",
+  "description": "Quiet until it matters: trackers, scams, bots and provenance, explained.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7r1GAzX/6MKB5MaepzMQ1QMD+IHEkFkCjyFUo86r2LkXvYQg4ypDiQzMKDvA1Ui8PT4/FCfkPY2HGR3S5S9kgJSDOICskvLQahA/nWPa7aBqDDhkPhlz16EymPgXpGrdCzKDpq2gjH93IQaOcQ+8CyWygA2fGrDyHj8eEUAVAyuFgPiYcz7HXfQSAUO/IvZcSU4r6yHYcZAJU1b8lTLgG/Znuy6UlEuik+n2mPak9CIOevnnZKSSwxMTYzvq2WbcMMRDokcZl6xfduStv8uic6tHRChTHBevpioVk47kH0yxZE3tYbAMZmw+UqRdEbx6zeKnvfeQjOc/0JOP0oPeJQIDAQAB",
+  "minimum_chrome_version": "138",
+  "permissions": [
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback",
+    "sidePanel",
+    "storage",
+    "tabs",
+    "unlimitedStorage",
+    "webNavigation"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "src/background/service-worker.js", "type": "module" },
+  "declarative_net_request": {
+    "rule_resources": [
+      { "id": "gpc", "enabled": true, "path": "rules/gpc.json" },
+      { "id": "trackers", "enabled": true, "path": "rules/trackers.json" }
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/main-world.js"],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/page.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "side_panel": { "default_path": "src/sidepanel/panel.html" },
+  "action": { "default_title": "Scout" }
+}
