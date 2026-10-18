@@ -2,23 +2,34 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ownerIndex, trackerFor } from '../src/shared/trackers.js';
-import { compactEntities, splitEasyPrivacy } from '../scripts/update-lists.mjs';
+import { compactEntities, parseUBlacklist, splitEasyPrivacy } from '../scripts/update-lists.mjs';
 
 const read = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 
-test('every ruleset the manifest names exists, has unique ids and no regex rules', () => {
+test('every ruleset the manifest names exists and has unique ids', () => {
   const manifest = read('../manifest.json');
   for (const { path } of manifest.declarative_net_request.rule_resources) {
-    const rules = read(`../${path}`);
-    const ids = rules.map((r) => r.id);
+    const ids = read(`../${path}`).map((r) => r.id);
     assert.equal(new Set(ids).size, ids.length, path);
-    assert.ok(rules.every((r) => !r.condition.regexFilter), `${path} has regex rules`);
   }
 });
 
-test('the ledger ruleset only blocks, and allow rules live apart', () => {
-  assert.ok(read('../rules/easyprivacy.json').every((r) => r.action.type === 'block'));
-  assert.ok(read('../rules/easyprivacy-allow.json').every((r) => r.action.type === 'allow'));
+test('the ledger rulesets only block, and allow rules live apart', () => {
+  for (const list of ['easyprivacy', 'easylist']) {
+    assert.ok(read(`../rules/${list}.json`).every((r) => r.action.type === 'block'), list);
+    assert.ok(read(`../rules/${list}-allow.json`).every((r) => r.action.type === 'allow'), list);
+  }
+});
+
+test('regex rules stay well under Chrome\'s limit', () => {
+  const manifest = read('../manifest.json');
+  const regex = manifest.declarative_net_request.rule_resources.flatMap(({ path }) => read(`../${path}`)).filter((r) => r.condition.regexFilter);
+  assert.ok(regex.length <= 10, `${regex.length} regex rules`);
+  assert.ok(regex.every((r) => r.condition.regexFilter.length < 2000));
+});
+
+test('parseUBlacklist reads match patterns and regexes', () => {
+  assert.deepEqual(parseUBlacklist('# c\n*://*.slop.ai/*\n*://plain.com/*\n/pinterest.+\\/bot/\n'), { domains: ['plain.com', 'slop.ai'], patterns: ['pinterest.+\\/bot'] });
 });
 
 test('splitEasyPrivacy drops redirects and header rewrites', () => {

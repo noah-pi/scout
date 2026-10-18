@@ -165,7 +165,15 @@ chrome.tabs.onRemoved.addListener((tabId) => dropTab(tabId));
 // Fires only for unpacked extensions, which is how Scout runs. It powers the
 // per-site tracker ledger.
 chrome.declarativeNetRequest.onRuleMatchedDebug?.addListener(({ request, rule }) => {
-  if (rule.rulesetId !== 'easyprivacy' || request.tabId < 0) return;
+  if (request.tabId < 0) return;
+  if (rule.rulesetId === 'easylist') {
+    updateTab(request.tabId, (state) => {
+      state.ads = (state.ads ?? 0) + 1;
+      return state;
+    });
+    return;
+  }
+  if (rule.rulesetId !== 'easyprivacy') return;
   const host = new URL(request.url).hostname;
   updateTab(request.tabId, async (state) => {
     const tracker = trackerFor(host, await loadOwners());
@@ -378,6 +386,14 @@ const handlers = {
     const found = await readFinePrint(registrableDomain(state.host), urls);
     return updateTab(tabId, (s) => {
       if (s.host === state.host) s.finePrint = found;
+      return s;
+    });
+  },
+
+  async slopCount({ count }, sender) {
+    if (!sender.tab) return;
+    return updateTab(sender.tab.id, (s) => {
+      s.slopHidden = Math.max(0, Number(count) || 0);
       return s;
     });
   },

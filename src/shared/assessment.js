@@ -155,6 +155,9 @@ export function pageFlags(registrable, page, protectedDomains) {
       break;
     }
   }
+  if (page.hiddenPrompt) {
+    flags.push({ kind: 'hidden-ai-text', severity: 'soft', text: 'The page hides text addressed to AI assistants.' });
+  }
   const elsewhere = (page.formHosts ?? []).filter((h) => h && h !== registrable);
   if (elsewhere.length) {
     flags.push({ kind: 'form-elsewhere', severity: 'soft', text: `Its form sends what you type to ${elsewhere[0]}.` });

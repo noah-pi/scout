@@ -36,6 +36,16 @@
     return [...forms].map((f) => { try { return new URL(f.action || location.href).hostname; } catch { return ''; } }).filter(Boolean);
   };
 
+  // Instructions aimed at AI assistants, hidden from the reader: present in
+  // the page's full text but not in what's rendered. Visible mentions (an
+  // article about prompt injection) don't count.
+  const INJECTION = /ignore (all |any )?(previous|prior|above|earlier) (instructions|prompts|messages)|disregard (your|all|previous) (instructions|rules)|(you are|act as) an? (ai|language model|llm|assistant)\b|\b(ai|llm|assistant|agent)s?,? (must|should|please) (say|tell|report|confirm|mark|classify|rate)|\bsystem prompt\b|<\|im_start\|>|\[\[?system\]?\]/i;
+  const hiddenPrompt = () => {
+    const all = document.body?.textContent ?? '';
+    if (!INJECTION.test(all)) return false;
+    return !INJECTION.test(document.body.innerText ?? '');
+  };
+
   const extract = ({ deep = false, links = false } = {}) => {
     const page = {
       title: document.title,
@@ -43,6 +53,7 @@
       headings: [...document.querySelectorAll('h1, h2')].slice(0, 6).map(text).filter(Boolean),
       labels: [...document.querySelectorAll('input:not([type="hidden"]), select')].slice(0, 12).map(labelFor).filter(Boolean),
       formHosts: formHosts(),
+      hiddenPrompt: hiddenPrompt(),
     };
     if (deep) page.text = (document.body?.innerText ?? '').slice(0, 20000);
     if (links) page.links = [...document.querySelectorAll('a[href]')].slice(0, 600).map((a) => ({ text: text(a).slice(0, 80), href: a.getAttribute('href') }));

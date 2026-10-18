@@ -68,6 +68,7 @@ test('pageFlags spots brand claims and forms that post elsewhere', () => {
   assert.deepEqual(flags.map((f) => f.kind), ['brand-mention', 'form-elsewhere']);
   assert.deepEqual(pageFlags('paypal.com', { title: 'PayPal: Log in', formHosts: ['paypal.com'] }, DEFAULT_PROTECTED), []);
   assert.deepEqual(pageFlags('nytimes.com', { title: 'Log in', headings: ['Subscribe'] }, DEFAULT_PROTECTED), []);
+  assert.deepEqual(pageFlags('shop.example', { title: 'Checkout', hiddenPrompt: true }, DEFAULT_PROTECTED).map((f) => f.kind), ['hidden-ai-text']);
 });
 
 test('nanoFlags treats a brand that fits the domain as info', () => {

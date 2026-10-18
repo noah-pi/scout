@@ -16,13 +16,16 @@ The manifest carries a fixed `key`, so the extension ID (and the memory stored u
 | Piece | What it does |
 |---|---|
 | **Shield** | Blocks trackers with EasyPrivacy: about 8,200 block rules covering roughly 47,000 domains, plus about 830 allow rules that keep sites from breaking. The rules come from uBlock Origin Lite's conversion to Chrome's rule format. A per-page ledger names the owner of each blocked tracker from DuckDuckGo's Tracker Radar (19,000 companies). It relies on `onRuleMatchedDebug`, which only fires for unpacked extensions. When the panel opens, Chrome's own count of blocks on the tab backfills anything the ledger missed. |
+| **Ads** | EasyList, from uBO Lite's DNR build: about 3,200 block rules and 500 allow rules. Counted in the panel next to trackers. |
+| **Clean links** | Strips tracking parameters (`utm_*`, `fbclid`, `gclid`, `msclkid`, `mc_eid`, `igshid` and about twenty more) from pages you open. |
+| **Slop filter** | On Google, Bing, DuckDuckGo, Brave Search and Startpage, results from about 1,100 AI-heavy sites (laylavish's CC0 HUGE AI Blocklist) fold to one quiet line; click to show. |
 | **Doorman** | Rejects cookie banners with DuckDuckGo's autoconsent: it clicks "reject all" using about 1,000 site and consent-platform rules, or hides the banner when rejecting isn't possible. Only autoconsent's own named snippets run in the page, never arbitrary code. |
 | **Global Privacy Control** | Sends `Sec-GPC: 1` on every request and sets `navigator.globalPrivacyControl`. Under CCPA and several other state laws, sites must honor it as an opt-out of sale and sharing. |
 | **Fingerprint watch** | Notes when a page reads canvas, WebGL GPU strings, audio or font probes. It reports and never blocks. Login pages do this routinely for fraud checks, so it never moves the badge. |
 | **Tripwire** | Local lookalike detection (confusable characters, one-letter typos, a brand in a subdomain or a hyphenated name, punycode) against your banks, stores and trusted sites, using the full Public Suffix List. Domain age comes from RDAP, and only once a page shows a password or payment field. |
 | **Chrome relay** | Shows whether Chrome's Safe Browsing is on. Extensions can't see whether it's Enhanced protection (the mode with on-device scam detection), so the panel links to the setting. |
 | **Ladder** | Turns stakes and flags into a badge (quiet, `•` note, `!` stop). On a login or payment page whose local signals are mixed (soft flags, no hard one), it climbs: **Gemini Nano** on the device first (free; names the brand the page presents as), then a **quick Claude check** if cloud checks are on and today's cap allows. When cloud checks are off, Scout logs a dry-run receipt instead, so you can see how often one would have run. |
-| **Page checks** | Free local checks once a page asks for a password or a card: a protected brand named in the title or headings on a different domain, and a sensitive form that posts to another site. |
+| **Page checks** | Free local checks once a page asks for a password or a card: a protected brand named in the title or headings on a different domain, a sensitive form that posts to another site, and hidden text addressed to AI assistants (prompt injection aimed at tools like Scout). Hidden text never reaches a model. |
 | **Investigate** | A button in the panel. Sends Claude the page's fields plus its visible text (redacted, capped at 6,000 characters) at high effort and shows a verdict, a short summary and reasons. |
 | **Census (Reddit)** | Reads the thread already on screen (new and old Reddit) and reports patterns across accounts: near-identical wording from different accounts (marked on the page as "similar wording"), Reddit's generated usernames, bursts of posting. On request it looks up public profiles through your own session (at most 40, slowly, cached for a week) for account age, same-week creation and karma. **Analyze pattern** sends the thread to Opus with usernames replaced by A1, A2…. Scout describes the thread; it never labels one person a bot. |
 | **Provenance** | Right-click any image → **Check image with Scout**. Reads C2PA Content Credentials with Adobe's c2pa-web (in the offscreen document; the 9 MB WASM loads only on first use), plus unsigned labels: IPTC digital source type, Stable Diffusion and ComfyUI settings in PNGs, generator names, and what looks like China's AIGC label. Tells apart an edited picture from an edited credential. For Google-hosted images it also checks the original-size file, since the displayed copy is stripped. "Nothing found" is said as exactly that. |
@@ -79,7 +82,7 @@ Off until you turn them on. In the panel, open **Models → Settings**, paste an
 
 ## Known limits
 
-- EasyPrivacy covers tracking. Ad blocking (EasyList) is not included yet; uBlock Origin Lite next to Scout covers it.
+- Ad blocking is network-level only; uBO Lite's cosmetic filters (hiding empty ad slots) aren't included.
 - uBO's 13 redirect rules are dropped, since they depend on uBO's own stub scripts. A few trackers that uBO would neuter therefore load.
 - If Chrome has idled the service worker, early tracker events on a page can arrive before Scout is listening. They're still blocked, and the panel counts them as "blocked before Scout could name them."
 - Large data files load on first use. Bundling them into the service worker kept Chrome from delivering navigation and rule-match events to it.
@@ -104,5 +107,7 @@ Off until you turn them on. In the panel, open **Models → Settings**, paste an
 
 - EasyPrivacy rules: GPLv3 / CC BY-SA 3.0 (EasyList authors), via uBlock Origin Lite (GPLv3)
 - Tracker Radar entity map: CC BY-NC-SA 4.0 (DuckDuckGo), fine for personal, non-commercial use
+- EasyList rules: GPLv3 / CC BY-SA 3.0, via uBlock Origin Lite
+- AI-site list: CC0 (laylavish/uBlockOrigin-HUGE-AI-Blocklist)
 - autoconsent: MPL-2.0 (DuckDuckGo) · tldts: MIT · Anthropic SDK: MIT · c2pa-web: MIT (Adobe)
 - Test images in `tests/fixtures/`: Source Kit samples, Apache-2.0

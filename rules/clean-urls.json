@@ -1,0 +1,83 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "redirect",
+      "redirect": {
+        "transform": {
+          "queryTransform": {
+            "removeParams": [
+              "utm_source",
+              "utm_medium",
+              "utm_campaign",
+              "utm_term",
+              "utm_content",
+              "utm_id",
+              "utm_name",
+              "utm_reader",
+              "utm_social",
+              "fbclid",
+              "gclid",
+              "gclsrc",
+              "dclid",
+              "gbraid",
+              "wbraid",
+              "msclkid",
+              "mc_cid",
+              "mc_eid",
+              "igshid",
+              "igsh",
+              "twclid",
+              "ttclid",
+              "yclid",
+              "_hsenc",
+              "_hsmi",
+              "mkt_tok",
+              "oly_anon_id",
+              "oly_enc_id",
+              "vero_id",
+              "rb_clickid",
+              "s_cid",
+              "srsltid",
+              "li_fat_id"
+            ]
+          }
+        }
+      }
+    },
+    "condition": {
+      "regexFilter": "[?&](utm_source|utm_medium|utm_campaign|utm_term|utm_content|utm_id|utm_name|utm_reader|utm_social|fbclid|gclid|gclsrc|dclid|gbraid|wbraid|msclkid|mc_cid|mc_eid|igshid|igsh|twclid|ttclid|yclid|_hsenc|_hsmi|mkt_tok|oly_anon_id|oly_enc_id|vero_id|rb_clickid|s_cid|srsltid|li_fat_id)=",
+      "resourceTypes": [
+        "main_frame"
+      ]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": {
+      "type": "redirect",
+      "redirect": {
+        "transform": {
+          "queryTransform": {
+            "removeParams": [
+              "si"
+            ]
+          }
+        }
+      }
+    },
+    "condition": {
+      "regexFilter": "[?&]si=",
+      "requestDomains": [
+        "youtube.com",
+        "youtu.be",
+        "open.spotify.com"
+      ],
+      "resourceTypes": [
+        "main_frame"
+      ]
+    }
+  }
+]

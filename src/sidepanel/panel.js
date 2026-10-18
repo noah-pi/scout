@@ -55,6 +55,7 @@ async function render() {
   const companies = Object.entries(byCompany).sort((a, b) => b[1] - a[1]);
   const attributed = companies.reduce((n, [, count]) => n + count, 0);
   if (blocked > attributed) companies.push(['Blocked before Scout could name them', blocked - attributed]);
+  if (tab.ads) companies.push(['Ads', tab.ads]);
   $('trackers').replaceChildren(
     ...(companies.length ? companies.map(([c, n]) => item(span(c), span(String(n)))) : [item(span('None on this page', 'muted'))]),
   );

@@ -41,6 +41,21 @@
         "id": "easyprivacy-allow",
         "enabled": true,
         "path": "rules/easyprivacy-allow.json"
+      },
+      {
+        "id": "easylist",
+        "enabled": true,
+        "path": "rules/easylist.json"
+      },
+      {
+        "id": "easylist-allow",
+        "enabled": true,
+        "path": "rules/easylist-allow.json"
+      },
+      {
+        "id": "clean-urls",
+        "enabled": true,
+        "path": "rules/clean-urls.json"
       }
     ]
   },
@@ -92,6 +107,29 @@
       ],
       "js": [
         "dist/reddit.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://www.google.com/search*",
+        "*://www.google.co.uk/search*",
+        "*://www.google.ca/search*",
+        "*://www.google.com.au/search*",
+        "*://www.google.de/search*",
+        "*://www.google.fr/search*",
+        "*://www.google.es/search*",
+        "*://www.google.it/search*",
+        "*://www.google.co.jp/search*",
+        "*://www.google.com.br/search*",
+        "*://www.bing.com/search*",
+        "*://www.bing.com/images/*",
+        "*://duckduckgo.com/*",
+        "*://search.brave.com/*",
+        "*://www.startpage.com/*"
+      ],
+      "js": [
+        "dist/slop.js"
       ],
       "run_at": "document_idle"
     }
