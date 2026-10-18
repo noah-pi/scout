@@ -11,106 +11,137 @@
     <h1>Scout</h1>
     <span id="level" class="level quiet">quiet</span>
   </header>
+  <nav class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="page" aria-selected="true">Page</button>
+    <button type="button" role="tab" data-tab="shields">Shields</button>
+    <button type="button" role="tab" data-tab="settings">Settings</button>
+  </nav>
 
-  <section>
-    <p id="host" class="host"></p>
-    <ul id="notes" class="notes"></ul>
-    <div class="actions">
-      <button id="trust" type="button">Trust this site</button>
-      <button id="investigate" type="button">Investigate</button>
-      <button id="fine-print" type="button">Read the fine print</button>
-    </div>
-    <div id="fine-print-result" class="investigation" hidden></div>
-    <div id="investigation" class="investigation" hidden></div>
-  </section>
+  <main data-panel="page">
+    <section>
+      <p id="host" class="host"></p>
+      <ul id="notes" class="notes"></ul>
+      <div class="actions">
+        <button id="trust" type="button">Trust this site</button>
+        <button id="investigate" type="button">Investigate</button>
+        <button id="fine-print" type="button">Read the fine print</button>
+      </div>
+      <div id="fine-print-result" class="investigation" hidden></div>
+      <div id="investigation" class="investigation" hidden></div>
+    </section>
 
-  <section id="census" hidden>
-    <h2>This thread</h2>
-    <p id="census-summary"></p>
-    <ul id="census-notes" class="notes"></ul>
-    <div class="actions">
-      <button id="census-profiles" type="button">Check accounts</button>
-      <button id="census-analyze" type="button">Analyze pattern</button>
-    </div>
-    <div id="census-analysis" class="investigation" hidden></div>
-  </section>
+    <section id="census" hidden>
+      <h2>This thread</h2>
+      <p id="census-summary"></p>
+      <ul id="census-notes" class="notes"></ul>
+      <div class="actions">
+        <button id="census-profiles" type="button">Check accounts</button>
+        <button id="census-analyze" type="button">Analyze pattern</button>
+      </div>
+      <div id="census-analysis" class="investigation" hidden></div>
+    </section>
 
-  <section id="asked" hidden>
-    <h2>You asked</h2>
-    <ul id="asked-list" class="images"></ul>
-  </section>
+    <section id="asked" hidden>
+      <h2>You asked</h2>
+      <ul id="asked-list" class="images"></ul>
+    </section>
 
-  <section id="images" hidden>
-    <h2>Images</h2>
-    <ul id="image-list" class="images"></ul>
-  </section>
+    <section id="images" hidden>
+      <h2>Images</h2>
+      <ul id="image-list" class="images"></ul>
+    </section>
 
-  <section>
-    <h2>Trackers blocked</h2>
-    <ul id="trackers" class="ledger"></ul>
-    <p id="fingerprinting" class="muted"></p>
-    <p id="consent" class="muted"></p>
-  </section>
+    <section>
+      <h2>Blocked here</h2>
+      <ul id="trackers" class="ledger"></ul>
+      <p id="fingerprinting" class="muted"></p>
+      <p id="consent" class="muted"></p>
+      <p id="slop" class="muted"></p>
+    </section>
+  </main>
 
-  <section>
-    <h2>Chrome</h2>
-    <p id="chrome" class="muted"></p>
-    <div class="actions">
-      <button id="chrome-settings" type="button">Security settings</button>
-    </div>
-  </section>
+  <main data-panel="shields" hidden>
+    <section>
+      <h2>This site</h2>
+      <p id="pause-status" class="muted"></p>
+      <div class="actions"><button id="pause" type="button">Pause blocking here</button></div>
+    </section>
 
-  <section>
-    <h2>Receipts</h2>
-    <p class="muted">Everything that left the browser on Scout's behalf. Dry runs show where a cloud check would have run.</p>
-    <ul id="receipts" class="receipts"></ul>
-  </section>
+    <section>
+      <h2>Spoiler shield</h2>
+      <p id="spoiler-status" class="muted"></p>
+      <label class="inline"><input type="checkbox" id="spoiler-enabled"> Hide spoilers for the shows below</label>
+      <label class="inline">Mode
+        <select id="spoiler-mode">
+          <option value="ai">Ask the model; reveal clean mentions</option>
+          <option value="keyword">Hide every mention</option>
+        </select>
+      </label>
+      <ul id="spoiler-list" class="ledger"></ul>
+      <form id="spoiler-form" class="settings">
+        <label>Show or film <input name="title" required placeholder="Severance"></label>
+        <label>Watched up to <input name="watched" placeholder="S2E3, or finished"></label>
+        <label>Also catch <input name="aliases" placeholder="Lumon, Mark Scout (comma-separated)"></label>
+        <div class="actions"><button type="submit">Add</button></div>
+      </form>
+    </section>
 
-  <section>
-    <h2>Spoiler shield</h2>
-    <p id="spoiler-status" class="muted"></p>
-    <label class="inline"><input type="checkbox" id="spoiler-enabled"> Hide spoilers for the shows below</label>
-    <label class="inline">Mode
-      <select id="spoiler-mode">
-        <option value="ai">Ask the model; reveal clean mentions</option>
-        <option value="keyword">Hide every mention</option>
-      </select>
-    </label>
-    <ul id="spoiler-list" class="ledger"></ul>
-    <form id="spoiler-form" class="settings">
-      <label>Show or film <input name="title" required placeholder="Severance"></label>
-      <label>Watched up to <input name="watched" placeholder="S2E3, or finished"></label>
-      <label>Also catch <input name="aliases" placeholder="Lumon, Mark Scout (comma-separated)"></label>
-      <div class="actions"><button type="submit">Add</button></div>
-    </form>
-  </section>
+    <section>
+      <h2>Search</h2>
+      <label class="inline"><input type="checkbox" id="slop-enabled"> Fold results from AI-heavy sites</label>
+    </section>
 
-  <section>
-    <h2>Models</h2>
-    <p id="spend" class="muted"></p>
-    <p id="nano" class="muted"></p>
-    <div class="actions"><button id="nano-download" type="button" hidden>Download on-device model</button></div>
-    <details id="settings">
-      <summary>Settings</summary>
+    <section>
+      <h2>Trusted sites</h2>
+      <p class="muted">Sites you trust skip Scout's warnings. Trust lapses if a domain is re-registered, or after a year.</p>
+      <ul id="trusted-list" class="ledger"></ul>
+    </section>
+
+    <section>
+      <h2>Your other extensions</h2>
+      <p class="muted">Extensions that can read every site or control the browser can see everything Scout protects.</p>
+      <ul id="extensions" class="images"></ul>
+    </section>
+
+    <section>
+      <h2>Chrome</h2>
+      <p id="chrome" class="muted"></p>
+      <div class="actions"><button id="chrome-settings" type="button">Security settings</button></div>
+    </section>
+  </main>
+
+  <main data-panel="settings" hidden>
+    <section>
+      <h2>Models</h2>
+      <p id="spend" class="muted"></p>
+      <p id="nano" class="muted"></p>
+      <div class="actions"><button id="nano-download" type="button" hidden>Download on-device model</button></div>
       <form id="settings-form" class="settings">
-        <label><input type="checkbox" name="cloud"> Cloud checks on login and payment pages with mixed signals</label>
+        <label class="inline"><input type="checkbox" name="cloud"> Cloud checks on login and payment pages with mixed signals</label>
         <label>Anthropic API key <input type="password" name="apiKey" autocomplete="off" spellcheck="false"></label>
-        <label>Quick check model <select name="quickModel"></select></label>
-        <label>Investigate and bot analysis model <select name="deepModel"></select></label>
-        <label>Daily cap on quick checks <input type="number" name="dailyCap" min="0" step="1"></label>
-        <p class="muted">Haiku 5.5 handles routine checks; Opus 5.5 handles Investigate and bot-pattern analysis. The key stays in this browser's extension storage.</p>
+        <label class="inline"><input type="checkbox" name="keyInSession"> Forget the key when Chrome closes</label>
+        <label>Routine model (page checks, spoilers, fine print) <select name="quickModel"></select></label>
+        <label>Critical-reasoning model (Investigate, thread analysis) <select name="deepModel"></select></label>
+        <label>Daily cap on page checks <input type="number" name="dailyCap" min="0" step="1"></label>
+        <label>Daily cap on spoiler checks <input type="number" name="spoilerCap" min="0" step="1"></label>
         <div class="actions"><button type="submit">Save</button><span id="saved" class="muted"></span></div>
       </form>
-    </details>
-  </section>
+    </section>
 
-  <section>
-    <h2>Memory</h2>
-    <div class="actions">
-      <button id="export" type="button">Export</button>
-      <label class="button">Import<input id="import" type="file" accept="application/json" hidden></label>
-    </div>
-  </section>
+    <section>
+      <h2>Receipts</h2>
+      <p class="muted">Everything that left the browser on Scout's behalf. Dry runs show where a cloud check would have run.</p>
+      <ul id="receipts" class="receipts"></ul>
+    </section>
+
+    <section>
+      <h2>Memory</h2>
+      <div class="actions">
+        <button id="export" type="button">Export</button>
+        <label class="button">Import<input id="import" type="file" accept="application/json" hidden></label>
+      </div>
+    </section>
+  </main>
 
   <script type="module" src="panel.js"></script>
 </body>

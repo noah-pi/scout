@@ -7,6 +7,7 @@ import * as memory from './memory.js';
 import { analyzeThread, askAboutText, checkSpoilers, escalate, investigate, nanoStatus, offscreen, readFinePrint } from './escalate.js';
 import { policyLinks } from '../shared/fineprint.js';
 import { linkFindings } from '../shared/links.js';
+import { auditAll } from '../shared/extensions.js';
 import { originalUrl, summarizeProvenance } from '../shared/provenance.js';
 import { getSpend, publicSettings, saveSettings } from './settings.js';
 import { pageFlags } from '../shared/assessment.js';
@@ -149,6 +150,30 @@ function maybeEscalate(tabId, state) {
   return state;
 }
 
+// Shields: on/off switches and sites where blocking is paused.
+const SHIELD_DEFAULTS = { slop: true, paused: [] };
+const PAUSE_RULE_BASE = 10_000;
+
+async function getShields() {
+  const { shields } = await chrome.storage.local.get('shields');
+  return { ...SHIELD_DEFAULTS, ...shields };
+}
+
+// A paused site gets one high-priority allowAllRequests rule, which lets
+// every request from its pages through all of Scout's rulesets.
+async function syncPauseRules(paused) {
+  const existing = (await chrome.declarativeNetRequest.getDynamicRules()).filter((r) => r.id >= PAUSE_RULE_BASE).map((r) => r.id);
+  await chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: existing,
+    addRules: paused.map((domain, i) => ({
+      id: PAUSE_RULE_BASE + i,
+      priority: 1000,
+      action: { type: 'allowAllRequests' },
+      condition: { requestDomains: [domain], resourceTypes: ['main_frame', 'sub_frame'] },
+    })),
+  });
+}
+
 let nanoCache = null;
 async function cachedNanoStatus() {
   if (!nanoCache || Date.now() - nanoCache.at > 60_000) nanoCache = { at: Date.now(), value: await nanoStatus() };
@@ -228,12 +253,14 @@ const handlers = {
       chrome.tabs.sendMessage(tabId, { type: 'consentReply', message: reply }, { frameId }).catch(() => {});
 
     switch (message?.type) {
-      case 'init':
+      case 'init': {
+        const paused = (await getShields()).paused.includes(registrableDomain(new URL(sender.tab.url).hostname));
         return replyTo({
           type: 'initResp',
-          config: CONSENT_CONFIG,
+          config: paused ? { ...CONSENT_CONFIG, enabled: false } : CONSENT_CONFIG,
           rules: { autoconsent: [], compact: filterCompactRules(await loadConsentRules(), { url: message.url, mainFrame: frameId === 0 }) },
         });
+      }
       case 'eval': {
         // Only autoconsent's own named snippets run, never arbitrary code strings.
         const snippet = evalSnippets[message.snippetId];
@@ -267,6 +294,10 @@ const handlers = {
       blocked,
       receipts: (await getReceipts()).slice(0, 25),
       chrome: await chromeProtection(),
+      shields: await getShields(),
+      site: tab.host ? registrableDomain(tab.host) : null,
+      trusted: await memory.listTrusted(),
+      extensions: auditAll(await chrome.management.getAll().catch(() => []), chrome.runtime.id),
       settings: await publicSettings(),
       spend: await getSpend(),
       nano: await cachedNanoStatus(),
@@ -397,6 +428,26 @@ const handlers = {
       return s;
     });
   },
+
+  async saveShields({ changes }) {
+    const next = { ...(await getShields()), ...changes };
+    next.slop = Boolean(next.slop);
+    next.paused = [...new Set((next.paused ?? []).map(String))].slice(0, 500);
+    await chrome.storage.local.set({ shields: next });
+    await syncPauseRules(next.paused);
+    return next;
+  },
+
+  async togglePause({ tabId }) {
+    const state = await getTab(tabId);
+    if (!state.host) throw new Error('No site to pause.');
+    const domain = registrableDomain(state.host);
+    const shields = await getShields();
+    const paused = shields.paused.includes(domain) ? shields.paused.filter((d) => d !== domain) : [...shields.paused, domain];
+    return handlers.saveShields({ changes: { paused } });
+  },
+
+  untrustDomain: ({ domain }) => memory.untrust(String(domain)),
 
   getSpoilers: async () => (await chrome.storage.local.get('spoilers')).spoilers ?? { enabled: false, mode: 'ai', entries: [] },
 

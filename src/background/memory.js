@@ -29,6 +29,10 @@ export async function isTrusted(domain, currentRegisteredAt) {
   return trustStillValid(memory.trusted[domain], currentRegisteredAt);
 }
 
+export async function listTrusted() {
+  return Object.values((await load()).trusted).sort((a, b) => a.domain.localeCompare(b.domain));
+}
+
 export async function dismiss(kind) {
   const memory = await load();
   memory.dismissals[kind] = (memory.dismissals[kind] ?? 0) + 1;

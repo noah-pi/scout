@@ -25,18 +25,23 @@
 
 body {
   margin: 0;
-  padding: 16px;
+  padding: 0 16px 24px;
   background: var(--bg);
   color: var(--fg);
-  font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font: 13px/1.55 ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
-header { display: flex; align-items: center; justify-content: space-between; }
-h1 { margin: 0; font-size: 16px; letter-spacing: 0.02em; }
+header, .tabs { position: sticky; background: var(--bg); z-index: 1; }
+header { top: 0; display: flex; align-items: baseline; justify-content: space-between; padding: 16px 0 6px; }
+h1 { margin: 0; font: 600 19px/1 ui-serif, Georgia, 'Times New Roman', serif; letter-spacing: 0.01em; }
 h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 
-section { padding: 14px 0; border-top: 1px solid var(--rule); }
-header + section { border-top: 0; }
+.tabs { top: 41px; display: flex; gap: 18px; padding: 4px 0 0; border-bottom: 1px solid var(--rule); }
+.tabs button { border: 0; border-radius: 0; padding: 6px 0 8px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--fg); }
+
+section { padding: 16px 0; border-top: 1px solid var(--rule); }
+main > section:first-child { border-top: 0; }
 
 .level { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
 .level.quiet { color: var(--quiet); }
@@ -55,7 +60,7 @@ li { padding: 4px 0; }
 .receipts li { font-size: 12px; }
 .receipts .dry { color: var(--muted); }
 
-.actions { display: flex; gap: 8px; margin-top: 8px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 button, .button {
   font: inherit;
   padding: 4px 10px;
@@ -65,7 +70,10 @@ button, .button {
   color: var(--fg);
   cursor: pointer;
 }
+button:hover:not(:disabled), .button:hover { border-color: var(--muted); }
+button:disabled { opacity: 0.6; cursor: default; }
 button.link { border: 0; padding: 0; color: var(--muted); text-decoration: underline; font-size: 12px; }
+.ext-why { font-size: 12px; }
 
 .images li { display: block; padding: 6px 0; }
 .images .headline { font-weight: 600; }

@@ -12,11 +12,14 @@ export const DEFAULTS = {
   dailyCap: 25,
   spoilerCap: 100, // batched spoiler checks per day
   baseURL: '', // for tests; empty means api.anthropic.com
+  keyInSession: false, // keep the key only until Chrome closes
 };
 
 export async function getSettings() {
   const { settings } = await chrome.storage.local.get('settings');
-  return { ...DEFAULTS, ...settings };
+  const merged = { ...DEFAULTS, ...settings };
+  if (merged.keyInSession) merged.apiKey = (await chrome.storage.session.get('apiKey')).apiKey ?? '';
+  return merged;
 }
 
 export async function saveSettings(changes) {
@@ -26,6 +29,14 @@ export async function saveSettings(changes) {
   next.dailyCap = Math.max(0, Math.floor(Number(next.dailyCap) || 0));
   next.spoilerCap = Math.max(0, Math.floor(Number(next.spoilerCap) || 0));
   next.cloud = Boolean(next.cloud);
+  next.keyInSession = Boolean(next.keyInSession);
+  if (next.keyInSession) {
+    // The key lives in session storage (memory only) and leaves disk.
+    await chrome.storage.session.set({ apiKey: next.apiKey });
+    next.apiKey = '';
+  } else {
+    await chrome.storage.session.remove('apiKey');
+  }
   await chrome.storage.local.set({ settings: next });
   return next;
 }

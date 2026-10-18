@@ -27,7 +27,7 @@ function span(text, className) {
 async function render() {
   const tabId = await activeTabId();
   if (tabId === undefined) return;
-  const { tab, blocked, receipts, chrome: protection, settings, spend, nano } = await ask({ type: 'panelState', tabId });
+  const { tab, blocked, receipts, chrome: protection, settings, spend, nano, shields, site, trusted, extensions } = await ask({ type: 'panelState', tabId });
 
   $('level').textContent = tab.trusted ? 'trusted' : tab.level;
   $('level').className = `level ${tab.trusted ? 'quiet' : tab.level}`;
@@ -98,6 +98,7 @@ async function render() {
   renderFinePrint(tab.finePrint);
   $('fine-print').hidden = !tab.host;
   renderSpoilers(tab.spoilersHidden ?? 0);
+  renderShields(tab, site, shields, trusted, extensions);
 
   $('receipts').replaceChildren(
     ...receipts.map((r) =>
@@ -135,14 +136,23 @@ function fillSettings(settings) {
     form[name].value = settings[name];
   }
   form.cloud.checked = settings.cloud;
+  form.keyInSession.checked = settings.keyInSession;
   form.dailyCap.value = settings.dailyCap;
+  form.spoilerCap.value = settings.spoilerCap;
   form.apiKey.placeholder = settings.hasKey ? 'saved (enter a new key to replace it)' : 'sk-ant-…';
 }
 
 $('settings-form').onsubmit = async (event) => {
   event.preventDefault();
   const form = event.target;
-  const changes = { cloud: form.cloud.checked, quickModel: form.quickModel.value, deepModel: form.deepModel.value, dailyCap: form.dailyCap.value };
+  const changes = {
+    cloud: form.cloud.checked,
+    keyInSession: form.keyInSession.checked,
+    quickModel: form.quickModel.value,
+    deepModel: form.deepModel.value,
+    dailyCap: form.dailyCap.value,
+    spoilerCap: form.spoilerCap.value,
+  };
   if (form.apiKey.value.trim()) changes.apiKey = form.apiKey.value.trim();
   await ask({ type: 'saveSettings', changes });
   form.apiKey.value = '';
@@ -311,6 +321,62 @@ $('census-profiles').onclick = (e) => busy(e.target, 'Checking…', async () => 
 $('census-analyze').onclick = (e) => busy(e.target, 'Analyzing…', async () => ask({ type: 'censusAnalyze', tabId: await activeTabId() }));
 
 $('chrome-settings').onclick = () => ask({ type: 'openChromeSecurity' });
+
+// Tabs. The choice is a per-viewer convenience, so localStorage is fine;
+// it may be unavailable, and the panel works without it.
+function showTab(name) {
+  for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
+  for (const m of document.querySelectorAll('main[data-panel]')) m.hidden = m.dataset.panel !== name;
+  try {
+    localStorage.setItem('scout-tab', name);
+  } catch {}
+}
+for (const b of document.querySelectorAll('.tabs button')) b.onclick = () => showTab(b.dataset.tab);
+try {
+  showTab(localStorage.getItem('scout-tab') || 'page');
+} catch {
+  showTab('page');
+}
+
+function renderShields(tab, site, shields, trusted, extensions) {
+  $('slop-enabled').checked = shields.slop;
+  $('slop').textContent = tab.slopHidden ? `Folded ${tab.slopHidden} result${tab.slopHidden === 1 ? '' : 's'} from AI-heavy sites.` : '';
+
+  const paused = Boolean(site && shields.paused.includes(site));
+  $('pause').hidden = !tab.host;
+  $('pause').textContent = paused ? 'Resume blocking here' : 'Pause blocking here';
+  $('pause-status').textContent = !tab.host
+    ? 'No site on this tab.'
+    : paused
+      ? `Blocking and cookie-banner rejection are paused on ${site}. Scam checks still run.`
+      : 'If a site breaks, pause ad, tracker and cookie-banner blocking for it. Scam checks keep running.';
+
+  $('trusted-list').replaceChildren(
+    ...(trusted.length
+      ? trusted.map((t) => {
+          const remove = Object.assign(document.createElement('button'), { className: 'link', type: 'button', textContent: 'remove' });
+          remove.onclick = () => ask({ type: 'untrustDomain', domain: t.domain }).then(render);
+          return item(span(t.domain), remove);
+        })
+      : [item(span('None yet.', 'muted'))]),
+  );
+
+  $('extensions').replaceChildren(
+    ...(extensions.length
+      ? extensions.map((e) => {
+          const li = document.createElement('li');
+          li.append(p(e.name, `headline ${e.risk >= 3 ? 'bad' : e.risk >= 2 ? 'mixed' : ''}`), p(e.reasons.join('; ') + '.', 'muted ext-why'));
+          return li;
+        })
+      : [item(span('None with broad access.', 'muted'))]),
+  );
+}
+
+$('slop-enabled').onchange = (e) => ask({ type: 'saveShields', changes: { slop: e.target.checked } }).then(render);
+$('pause').onclick = async () => {
+  await ask({ type: 'togglePause', tabId: await activeTabId() });
+  render();
+};
 
 $('export').onclick = async () => {
   const data = await ask({ type: 'exportMemory' });
