@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "updated": "2026-10-18",
+  "note": "Page rules for Scout's calm layer and AI-label filter. Scout fetches this file daily from the repo; it can only hide things (CSS selectors and text patterns, never code). Edit, push, and every install picks it up within a day.",
+  "calm": {
+    "shorts": {
+      "label": "Hide YouTube Shorts",
+      "sites": ["youtube.com"],
+      "selectors": [
+        "ytd-reel-shelf-renderer",
+        "ytd-rich-shelf-renderer[is-shorts]",
+        "ytd-rich-section-renderer:has(ytd-rich-shelf-renderer[is-shorts])",
+        "grid-shelf-view-model:has(ytm-shorts-lockup-view-model)",
+        "ytd-rich-item-renderer:has(a[href^='/shorts/'])",
+        "ytd-video-renderer:has(a[href^='/shorts/'])",
+        "ytd-guide-entry-renderer:has(a[title='Shorts'])",
+        "ytd-mini-guide-entry-renderer[aria-label='Shorts']",
+        "yt-chip-cloud-chip-renderer:has(yt-formatted-string[title='Shorts'])"
+      ]
+    },
+    "aiOverviews": {
+      "label": "Hide Google's AI Overviews",
+      "sites": ["google.*"],
+      "selectors": [".M8OgIe", "div[jscontroller='EYwa3d']"],
+      "textBlocks": {
+        "texts": ["AI Overview", "AI overview", "Übersicht mit KI", "Aperçu IA", "Resumen creado con IA", "Panoramica IA", "Visão geral criada por IA", "AI による概要", "AI 개요", "AI 摘要"],
+        "container": "#rso > div, #center_col > div, [data-hveid], block-component"
+      }
+    },
+    "chat": {
+      "label": "Hide chat bubbles",
+      "sites": ["*"],
+      "selectors": [
+        "#intercom-container",
+        ".intercom-lightweight-app",
+        "#hubspot-messages-iframe-container",
+        "#drift-widget-container",
+        "#drift-frame-controller",
+        "iframe[title='Button to launch messaging window']",
+        "#crisp-chatbox",
+        "#tidio-chat",
+        "#fc_frame",
+        "#chat-widget-container",
+        ".olark-launcher-wrapper",
+        "iframe[title='chat widget']",
+        "#launcher-frame"
+      ]
+    },
+    "popups": {
+      "label": "Hide newsletter and notification pop-ups",
+      "sites": ["*"],
+      "selectors": [
+        "#onesignal-slidedown-container",
+        "#onesignal-bell-container",
+        "#PopupSignupForm_0",
+        ".pum-overlay",
+        "#attentive_overlay",
+        "iframe#attentive_creative",
+        "[class*='newsletter-modal' i]",
+        "[class*='newsletter-popup' i]",
+        "div[role='dialog'][aria-label*='newsletter' i]",
+        "div[role='dialog'][aria-label*='subscribe' i]"
+      ]
+    },
+    "autoplay": {
+      "label": "Stop videos that play by themselves",
+      "sites": ["*"],
+      "exempt": ["youtube.com", "vimeo.com", "twitch.tv", "netflix.com", "tiktok.com", "instagram.com", "max.com", "hulu.com", "disneyplus.com", "primevideo.com", "meet.google.com", "zoom.us"],
+      "behavior": "pause-autoplay"
+    }
+  },
+  "aiLabels": {
+    "label": "Hide posts the platform labels as AI-generated",
+    "texts": [
+      "AI info",
+      "Made with AI",
+      "AI-generated",
+      "AI generated",
+      "Creator labeled as AI-generated",
+      "Altered or synthetic content",
+      "AI modified",
+      "AI-modified",
+      "Generated with AI",
+      "Imagined with AI"
+    ],
+    "platforms": {
+      "YouTube": { "sites": ["youtube.com"], "container": "ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-reel-item-renderer, ytm-shorts-lockup-view-model, ytd-reel-video-renderer" },
+      "Instagram": { "sites": ["instagram.com"], "container": "article" },
+      "Facebook": { "sites": ["facebook.com"], "container": "[role='article'], div[data-pagelet^='FeedUnit']" },
+      "Threads": { "sites": ["threads.net", "threads.com"], "container": "div[data-pressable-container='true'], [role='article']" },
+      "TikTok": { "sites": ["tiktok.com"], "container": "[data-e2e='recommend-list-item-container'], article, [data-e2e='user-post-item']" },
+      "Pinterest": { "sites": ["pinterest.com"], "container": "[data-test-id='pin'], [data-grid-item='true'], div[role='listitem']" }
+    }
+  }
+}

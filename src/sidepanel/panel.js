@@ -27,7 +27,7 @@ function span(text, className) {
 async function render() {
   const tabId = await activeTabId();
   if (tabId === undefined) return;
-  const { tab, blocked, receipts, chrome: protection, settings, spend, nano, shields, site, trusted, extensions } = await ask({ type: 'panelState', tabId });
+  const { tab, blocked, receipts, chrome: protection, settings, spend, nano, shields, site, trusted, extensions, pageRules } = await ask({ type: 'panelState', tabId });
 
   $('level').textContent = tab.trusted ? 'trusted' : tab.level;
   $('level').className = `level ${tab.trusted ? 'quiet' : tab.level}`;
@@ -99,6 +99,7 @@ async function render() {
   $('fine-print').hidden = !tab.host;
   renderSpoilers(tab.spoilersHidden ?? 0);
   renderShields(tab, site, shields, trusted, extensions);
+  renderCalm(tab, shields, pageRules);
 
   $('receipts').replaceChildren(
     ...receipts.map((r) =>
@@ -371,6 +372,29 @@ function renderShields(tab, site, shields, trusted, extensions) {
       : [item(span('None with broad access.', 'muted'))]),
   );
 }
+
+function renderCalm(tab, shields, rules) {
+  const calm = tab.calm ?? {};
+  const parts = [calm.folded && `${calm.folded} folded`, calm.aiFolded && `${calm.aiFolded} AI-labeled post${calm.aiFolded === 1 ? '' : 's'} hidden`, calm.paused && `${calm.paused} autoplaying video${calm.paused === 1 ? '' : 's'} paused`].filter(Boolean);
+  $('calm-status').textContent = parts.length ? `On this page: ${parts.join(', ')}.` : '';
+  $('calm-toggles').replaceChildren(
+    ...rules.calm.map(({ key, label }) => {
+      const box = Object.assign(document.createElement('input'), { type: 'checkbox', checked: shields.calm?.[key] !== false });
+      box.onchange = () => ask({ type: 'saveShields', changes: { calm: { ...shields.calm, [key]: box.checked } } }).then(render);
+      const l = document.createElement('label');
+      l.className = 'inline';
+      l.append(box, document.createTextNode(` ${label}`));
+      return l;
+    }),
+  );
+  $('ai-labels').checked = shields.aiLabels !== false;
+  $('ai-platforms').textContent = `Uses each platform's own label on ${rules.platforms.join(', ')}.`;
+  const when = rules.fetchedAt ? new Date(rules.fetchedAt).toLocaleDateString() : 'never';
+  $('rules-status').textContent = `Page rules dated ${rules.updated ?? 'unknown'}; last checked ${when}${rules.error ? ` (last check failed: ${rules.error})` : ''}. They update daily from the Scout repo and can only hide things.`;
+}
+
+$('ai-labels').onchange = (e) => ask({ type: 'saveShields', changes: { aiLabels: e.target.checked } }).then(render);
+$('rules-refresh').onclick = (e) => busy(e.target, 'Checking…', () => ask({ type: 'refreshPageRules' }), 'rules-status');
 
 $('slop-enabled').onchange = (e) => ask({ type: 'saveShields', changes: { slop: e.target.checked } }).then(render);
 $('pause').onclick = async () => {

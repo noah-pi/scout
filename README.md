@@ -18,6 +18,8 @@ The manifest carries a fixed `key`, so the extension ID (and the memory stored u
 | **Shield** | Blocks trackers with EasyPrivacy: about 8,200 block rules covering roughly 47,000 domains, plus about 830 allow rules that keep sites from breaking. The rules come from uBlock Origin Lite's conversion to Chrome's rule format. A per-page ledger names the owner of each blocked tracker from DuckDuckGo's Tracker Radar (19,000 companies). It relies on `onRuleMatchedDebug`, which only fires for unpacked extensions. When the panel opens, Chrome's own count of blocks on the tab backfills anything the ledger missed. |
 | **Ads** | EasyList, from uBO Lite's DNR build: about 3,200 block rules and 500 allow rules. Counted in the panel next to trackers. |
 | **Clean links** | Strips tracking parameters (`utm_*`, `fbclid`, `gclid`, `msclkid`, `mc_eid`, `igshid` and about twenty more) from pages you open. |
+| **Calm layer** | Switches in Shields → Calm: hide YouTube Shorts, Google's AI Overviews (matched by their heading in ten languages), chat bubbles, newsletter and notification pop-ups, and stop videos that play by themselves (not on video sites). |
+| **AI-labeled posts** | Folds posts that the platform itself labels as AI-made ("AI info", "Made with AI", "Altered or synthetic content", "AI modified", "Creator labeled as AI-generated"...) on YouTube, Instagram, Facebook, Threads, TikTok and Pinterest, with a click to show. X and LinkedIn publish no such label. |
 | **Slop filter** | On Google, Bing, DuckDuckGo, Brave Search and Startpage, results from about 1,100 AI-heavy sites (laylavish's CC0 HUGE AI Blocklist) fold to one quiet line; click to show. |
 | **Doorman** | Rejects cookie banners with DuckDuckGo's autoconsent: it clicks "reject all" using about 1,000 site and consent-platform rules, or hides the banner when rejecting isn't possible. Only autoconsent's own named snippets run in the page, never arbitrary code. |
 | **Global Privacy Control** | Sends `Sec-GPC: 1` on every request and sets `navigator.globalPrivacyControl`. Under CCPA and several other state laws, sites must honor it as an opt-out of sale and sharing. |
@@ -73,6 +75,12 @@ Off until you turn them on. In the panel, open **Models → Settings**, paste an
 - **Refusals:** Opus and Sonnet requests opt into server-side fallback (`fallbacks: "default"`), so a safety decline is retried on another model. A refusal that still stands becomes an info note, never a warning.
 - **Where it runs:** model calls happen in an offscreen document, not the service worker. The SDK is 300 KB, and slow calls outlive the worker's idle timer there.
 - **What's sent:** the evidence object in `src/shared/assessment.js`: host, registration date, what the page asks for, Scout's local signals, and the page's title, description, headings, field labels and form destinations. Emails and long numbers are redacted. Investigate adds visible text. Values typed into fields are never read.
+
+## Page rules
+
+What the calm layer hides lives in `data/page-rules.json`. A copy ships with Scout; once a day Scout fetches the latest from this repo (`raw.githubusercontent.com`, no personal data, a receipt each time) and validates it. Rules can only hide things: CSS selectors and short text patterns, never code. Each selector is applied on its own, so a broken one fails alone.
+
+When a site changes its markup and something reappears, edit `data/page-rules.json` on GitHub (bump `updated`), commit, and every install picks it up within a day, or at once with **Check for rule updates**.
 
 ## Design rules
 

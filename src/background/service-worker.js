@@ -9,6 +9,7 @@ import { policyLinks } from '../shared/fineprint.js';
 import { linkFindings } from '../shared/links.js';
 import { auditAll } from '../shared/extensions.js';
 import { shopFlags } from '../shared/shops.js';
+import { validateRules } from '../shared/pagerules.js';
 import { ageInDays } from '../shared/tripwire.js';
 import { originalUrl, summarizeProvenance } from '../shared/provenance.js';
 import { getSpend, publicSettings, saveSettings } from './settings.js';
@@ -62,6 +63,37 @@ const BADGE = {
 };
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+
+// Page rules (calm layer, AI labels) refresh daily from the public repo.
+// One request, no personal data; the result is validated before use.
+const PAGE_RULES_URL = 'https://raw.githubusercontent.com/noah-pi/scout/main/data/page-rules.json';
+
+async function refreshPageRules(force = false) {
+  const { pageRules, pageRulesUrl } = await chrome.storage.local.get(['pageRules', 'pageRulesUrl']);
+  if (!force && pageRules?.fetchedAt && Date.now() - pageRules.fetchedAt < 20 * 3_600_000) return pageRules;
+  const url = pageRulesUrl || PAGE_RULES_URL; // pageRulesUrl is for tests
+  try {
+    const res = await fetch(url, { cache: 'no-store', credentials: 'omit' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    if (text.length > 200_000) throw new Error('too large');
+    const rules = validateRules(JSON.parse(text));
+    const bundledVersion = (await (await fetch(chrome.runtime.getURL('data/page-rules.json'))).json()).version;
+    if (rules.version < bundledVersion) throw new Error('older than the bundled rules');
+    const next = { rules, fetchedAt: Date.now(), from: url };
+    await chrome.storage.local.set({ pageRules: next });
+    await addReceipt({ service: new URL(url).hostname, sent: 'nothing (fetched page-rules.json)', reason: 'Daily page-rules refresh' });
+    return next;
+  } catch (error) {
+    await chrome.storage.local.set({ pageRules: { ...(pageRules ?? {}), fetchedAt: Date.now(), error: String(error.message ?? error) } });
+    return null;
+  }
+}
+
+chrome.alarms.create('page-rules', { periodInMinutes: 24 * 60, delayInMinutes: 1 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'page-rules') refreshPageRules();
+});
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({ id: 'scout-image', title: 'Check image with Scout', contexts: ['image'] });
@@ -153,7 +185,7 @@ function maybeEscalate(tabId, state) {
 }
 
 // Shields: on/off switches and sites where blocking is paused.
-const SHIELD_DEFAULTS = { slop: true, paused: [] };
+const SHIELD_DEFAULTS = { slop: true, paused: [], calm: {}, aiLabels: true };
 const PAUSE_RULE_BASE = 10_000;
 
 async function getShields() {
@@ -174,6 +206,19 @@ async function syncPauseRules(paused) {
       condition: { requestDomains: [domain], resourceTypes: ['main_frame', 'sub_frame'] },
     })),
   });
+}
+
+async function pageRulesSummary() {
+  const { pageRules } = await chrome.storage.local.get('pageRules');
+  const rules = pageRules?.rules ?? validateRules(await (await fetch(chrome.runtime.getURL('data/page-rules.json'))).json());
+  return {
+    calm: Object.entries(rules.calm).map(([key, r]) => ({ key, label: r.label })),
+    aiLabel: rules.aiLabels.label,
+    platforms: Object.keys(rules.aiLabels.platforms),
+    updated: rules.updated,
+    fetchedAt: pageRules?.fetchedAt ?? null,
+    error: pageRules?.error ?? null,
+  };
 }
 
 let nanoCache = null;
@@ -297,6 +342,7 @@ const handlers = {
       receipts: (await getReceipts()).slice(0, 25),
       chrome: await chromeProtection(),
       shields: await getShields(),
+      pageRules: await pageRulesSummary(),
       site: tab.host ? registrableDomain(tab.host) : null,
       trusted: await memory.listTrusted(),
       extensions: auditAll(await chrome.management.getAll().catch(() => []), chrome.runtime.id),
@@ -434,6 +480,8 @@ const handlers = {
   async saveShields({ changes }) {
     const next = { ...(await getShields()), ...changes };
     next.slop = Boolean(next.slop);
+    next.aiLabels = Boolean(next.aiLabels);
+    next.calm = Object.fromEntries(Object.entries(next.calm ?? {}).map(([k, v]) => [String(k).slice(0, 30), Boolean(v)]));
     next.paused = [...new Set((next.paused ?? []).map(String))].slice(0, 500);
     await chrome.storage.local.set({ shields: next });
     await syncPauseRules(next.paused);
@@ -475,6 +523,16 @@ const handlers = {
       return reassess(tabId, state);
     });
   },
+
+  async calmCount({ counts }, sender) {
+    if (!sender.tab) return;
+    return updateTab(sender.tab.id, (s) => {
+      s.calm = { folded: Number(counts?.folded) || 0, aiFolded: Number(counts?.aiFolded) || 0, paused: Number(counts?.paused) || 0 };
+      return s;
+    });
+  },
+
+  refreshPageRules: () => refreshPageRules(true).then((r) => ({ ok: Boolean(r?.rules), updated: r?.rules?.updated ?? null })),
 
   getSpoilers: async () => (await chrome.storage.local.get('spoilers')).spoilers ?? { enabled: false, mode: 'ai', entries: [] },
 

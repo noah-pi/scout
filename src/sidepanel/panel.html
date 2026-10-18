@@ -87,8 +87,14 @@
     </section>
 
     <section>
-      <h2>Search</h2>
-      <label class="inline"><input type="checkbox" id="slop-enabled"> Fold results from AI-heavy sites</label>
+      <h2>Calm</h2>
+      <p id="calm-status" class="muted"></p>
+      <div id="calm-toggles"></div>
+      <label class="inline"><input type="checkbox" id="ai-labels"> <span id="ai-labels-label">Hide posts the platform labels as AI-generated</span></label>
+      <p id="ai-platforms" class="muted"></p>
+      <label class="inline"><input type="checkbox" id="slop-enabled"> Fold search results from AI-heavy sites</label>
+      <p id="rules-status" class="muted"></p>
+      <div class="actions"><button id="rules-refresh" type="button">Check for rule updates</button></div>
     </section>
 
     <section>
