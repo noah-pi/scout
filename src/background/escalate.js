@@ -5,6 +5,7 @@
 import {
   NANO_BRAND_PROMPT, buildEvidence, buildRequest, costOf, nanoFlags, parseVerdict, verdictFlags,
 } from '../shared/assessment.js';
+import { buildSpoilerRequest, parseSpoilerResults } from '../shared/spoilers.js';
 import { registrableDomain } from '../shared/tripwire.js';
 import { addReceipt } from './store.js';
 import { addSpend, getSettings, getSpend } from './settings.js';
@@ -94,6 +95,51 @@ export async function escalate(state, page, apply) {
   } catch (error) {
     await apply([{ kind: 'claude:error', severity: 'info', text: `Cloud check failed: ${error.message}` }]);
   }
+}
+
+const SPOILER_TTL = 30 * 86_400_000;
+
+// items: [{ id, text, titles }] from one page. Returns { id: isSpoiler }.
+// Without cloud checks, or past the cap, everything stays hidden.
+export async function checkSpoilers(items, watchlist, host) {
+  const { spoilerCache = {} } = await chrome.storage.local.get('spoilerCache');
+  const now = Date.now();
+  const verdicts = {};
+  const todo = [];
+  for (const item of items) {
+    const hit = spoilerCache[item.id];
+    if (hit && now - hit.at < SPOILER_TTL) verdicts[item.id] = hit.spoiler;
+    else todo.push(item);
+  }
+  if (!todo.length) return verdicts;
+
+  const settings = await getSettings();
+  const spend = await getSpend();
+  if (!settings.cloud || !settings.apiKey || spend.spoilerCalls >= settings.spoilerCap) {
+    for (const item of todo) verdicts[item.id] = true;
+    return verdicts;
+  }
+
+  const model = settings.quickModel;
+  const request = buildSpoilerRequest(model, todo, watchlist);
+  let fresh;
+  try {
+    const response = await offscreen('claude', { apiKey: settings.apiKey, baseURL: settings.baseURL, request });
+    const usd = costOf(model, response.usage);
+    await addSpend(usd, 'spoilerCalls');
+    const shows = [...new Set(todo.flatMap((i) => i.titles))].join(', ');
+    await addReceipt({ service: `claude (${model})`, sent: `${host}: ${todo.length} passages mentioning ${shows}`, reason: 'Spoiler shield', usd });
+    fresh = parseSpoilerResults(response, todo.map((i) => i.id));
+  } catch {
+    fresh = Object.fromEntries(todo.map((i) => [i.id, true]));
+  }
+
+  // Keep the cache bounded: drop expired entries, then the oldest.
+  const next = { ...spoilerCache };
+  for (const [id, spoiler] of Object.entries(fresh)) next[id] = { spoiler, at: now };
+  const kept = Object.entries(next).filter(([, v]) => now - v.at < SPOILER_TTL).sort((a, b) => b[1].at - a[1].at).slice(0, 5000);
+  await chrome.storage.local.set({ spoilerCache: Object.fromEntries(kept) });
+  return { ...verdicts, ...fresh };
 }
 
 export async function investigate(state, page) {

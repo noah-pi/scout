@@ -4,9 +4,10 @@ import { registrableDomain } from '../shared/tripwire.js';
 import { dropTab, emptyTab, getReceipts, getTab, updateTab } from './store.js';
 import { ageFlags, localFlags, registrationOf } from './tripwire.js';
 import * as memory from './memory.js';
-import { escalate, investigate, nanoStatus } from './escalate.js';
+import { checkSpoilers, escalate, investigate, nanoStatus } from './escalate.js';
 import { getSpend, publicSettings, saveSettings } from './settings.js';
 import { pageFlags } from '../shared/assessment.js';
+import { normalizeEntry } from '../shared/spoilers.js';
 import { evalSnippets, filterCompactRules } from '../../dist/consent-lib.js';
 
 // Reject everything a banner offers; cosmetic rules hide banners that can't be
@@ -238,6 +239,35 @@ const handlers = {
   },
 
   saveSettings: ({ changes }) => saveSettings(changes).then(() => publicSettings()),
+
+  async spoilerCheck({ items }, sender) {
+    if (!sender.tab || !Array.isArray(items)) return {};
+    const { spoilers } = await chrome.storage.local.get('spoilers');
+    if (!spoilers?.enabled) return {};
+    const clean = items.slice(0, 12).map((i) => ({ id: String(i.id), text: String(i.text).slice(0, 700), titles: (i.titles ?? []).map(String) }));
+    const host = new URL(sender.tab.url).hostname;
+    const verdicts = await checkSpoilers(clean, spoilers.entries, host);
+    const hidden = Object.values(verdicts).filter(Boolean).length;
+    if (hidden) {
+      updateTab(sender.tab.id, (state) => {
+        state.spoilersHidden = (state.spoilersHidden ?? 0) + hidden;
+        return state;
+      });
+    }
+    return verdicts;
+  },
+
+  getSpoilers: async () => (await chrome.storage.local.get('spoilers')).spoilers ?? { enabled: false, mode: 'ai', entries: [] },
+
+  async saveSpoilers({ spoilers }) {
+    const clean = {
+      enabled: Boolean(spoilers.enabled),
+      mode: spoilers.mode === 'keyword' ? 'keyword' : 'ai',
+      entries: (spoilers.entries ?? []).map(normalizeEntry).filter((e) => e.title.length >= 2).slice(0, 200),
+    };
+    await chrome.storage.local.set({ spoilers: clean });
+    return clean;
+  },
 
   // Tier 4: you asked. Reads the page's visible text as well as its fields.
   async investigate({ tabId }) {

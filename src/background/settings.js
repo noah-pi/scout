@@ -10,6 +10,7 @@ export const DEFAULTS = {
   quickModel: 'claude-haiku-5-5',
   deepModel: 'claude-opus-5-5',
   dailyCap: 25,
+  spoilerCap: 100, // batched spoiler checks per day
   baseURL: '', // for tests; empty means api.anthropic.com
 };
 
@@ -23,6 +24,7 @@ export async function saveSettings(changes) {
   if (!MODELS.includes(next.quickModel)) next.quickModel = DEFAULTS.quickModel;
   if (!MODELS.includes(next.deepModel)) next.deepModel = DEFAULTS.deepModel;
   next.dailyCap = Math.max(0, Math.floor(Number(next.dailyCap) || 0));
+  next.spoilerCap = Math.max(0, Math.floor(Number(next.spoilerCap) || 0));
   next.cloud = Boolean(next.cloud);
   await chrome.storage.local.set({ settings: next });
   return next;
@@ -38,10 +40,11 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export async function getSpend() {
   const { spend } = await chrome.storage.local.get('spend');
-  return spend?.date === today() ? spend : { date: today(), calls: 0, usd: 0 };
+  return spend?.date === today() ? { spoilerCalls: 0, ...spend } : { date: today(), calls: 0, spoilerCalls: 0, usd: 0 };
 }
 
-export async function addSpend(usd) {
+// counter: 'calls' (page checks and Investigate) or 'spoilerCalls'.
+export async function addSpend(usd, counter = 'calls') {
   const spend = await getSpend();
-  await chrome.storage.local.set({ spend: { ...spend, calls: spend.calls + 1, usd: spend.usd + usd } });
+  await chrome.storage.local.set({ spend: { ...spend, [counter]: spend[counter] + 1, usd: spend.usd + usd } });
 }

@@ -44,6 +44,25 @@
   </section>
 
   <section>
+    <h2>Spoiler shield</h2>
+    <p id="spoiler-status" class="muted"></p>
+    <label class="inline"><input type="checkbox" id="spoiler-enabled"> Hide spoilers for the shows below</label>
+    <label class="inline">Mode
+      <select id="spoiler-mode">
+        <option value="ai">Ask the model; reveal clean mentions</option>
+        <option value="keyword">Hide every mention</option>
+      </select>
+    </label>
+    <ul id="spoiler-list" class="ledger"></ul>
+    <form id="spoiler-form" class="settings">
+      <label>Show or film <input name="title" required placeholder="Severance"></label>
+      <label>Watched up to <input name="watched" placeholder="S2E3, or finished"></label>
+      <label>Also catch <input name="aliases" placeholder="Lumon, Mark Scout (comma-separated)"></label>
+      <div class="actions"><button type="submit">Add</button></div>
+    </form>
+  </section>
+
+  <section>
     <h2>Models</h2>
     <p id="spend" class="muted"></p>
     <p id="nano" class="muted"></p>

@@ -1,6 +1,7 @@
 import { MODELS } from '../shared/assessment.js';
 
 const $ = (id) => document.getElementById(id);
+const dollars = (usd) => (usd > 0 && usd < 0.0001 ? '<$0.0001' : `$${usd.toFixed(usd < 0.01 ? 4 : 2)}`);
 
 const ask = async (message) => {
   const res = await chrome.runtime.sendMessage(message);
@@ -85,16 +86,17 @@ async function render() {
   }
 
   $('spend').textContent = settings.cloud
-    ? `Today: ${spend.calls} of ${settings.dailyCap} cloud checks, $${spend.usd.toFixed(3)}.`
+    ? `Today: ${spend.calls} of ${settings.dailyCap} page checks, ${spend.spoilerCalls ?? 0} spoiler checks, ${dollars(spend.usd)}.`
     : `Cloud checks are off${settings.hasKey ? '' : ' (no API key)'}. Investigate still works once a key is saved.`;
   $('nano').textContent = NANO[nano] ?? `On-device model: ${nano}.`;
   $('nano-download').hidden = nano !== 'downloadable';
   fillSettings(settings);
+  renderSpoilers(tab.spoilersHidden ?? 0);
 
   $('receipts').replaceChildren(
     ...receipts.map((r) =>
       item(
-        span(`${r.dryRun ? 'dry run · ' : ''}${r.service}: ${r.sent}${r.usd ? ` · $${r.usd.toFixed(4)}` : ''}`, r.dryRun ? 'dry' : ''),
+        span(`${r.dryRun ? 'dry run · ' : ''}${r.service}: ${r.sent}${r.usd ? ` · ${dollars(r.usd)}` : ''}`, r.dryRun ? 'dry' : ''),
         span(new Date(r.at).toLocaleTimeString()),
       ),
     ),
@@ -170,6 +172,48 @@ $('nano-download').onclick = async () => {
     $('nano').textContent = `Download failed: ${error.message}`;
   }
 };
+
+// Spoiler shield: the watchlist lives in extension storage; pages pick up
+// changes on their next load.
+let spoilers = { enabled: false, mode: 'ai', entries: [] };
+
+async function saveSpoilers(next) {
+  spoilers = await ask({ type: 'saveSpoilers', spoilers: next });
+  renderSpoilers();
+}
+
+function renderSpoilers(hiddenHere = null) {
+  $('spoiler-enabled').checked = spoilers.enabled;
+  $('spoiler-mode').value = spoilers.mode;
+  $('spoiler-list').replaceChildren(
+    ...spoilers.entries.map((entry, i) => {
+      const remove = Object.assign(document.createElement('button'), { className: 'link', type: 'button', textContent: 'remove' });
+      remove.onclick = () => saveSpoilers({ ...spoilers, entries: spoilers.entries.filter((_, j) => j !== i) });
+      const detail = [entry.watched && `watched ${entry.watched}`, entry.aliases.length && `also ${entry.aliases.join(', ')}`].filter(Boolean).join(' · ');
+      return item(span(detail ? `${entry.title} (${detail})` : entry.title), remove);
+    }),
+  );
+  if (hiddenHere !== null) {
+    $('spoiler-status').textContent = !spoilers.enabled
+      ? 'Off.'
+      : hiddenHere
+        ? `${hiddenHere} passage${hiddenHere === 1 ? '' : 's'} hidden on this page.`
+        : 'Nothing hidden on this page.';
+  }
+}
+
+$('spoiler-enabled').onchange = (e) => saveSpoilers({ ...spoilers, enabled: e.target.checked });
+$('spoiler-mode').onchange = (e) => saveSpoilers({ ...spoilers, mode: e.target.value });
+$('spoiler-form').onsubmit = async (event) => {
+  event.preventDefault();
+  const f = event.target;
+  await saveSpoilers({ ...spoilers, enabled: true, entries: [...spoilers.entries, { title: f.title.value, watched: f.watched.value, aliases: f.aliases.value }] });
+  f.reset();
+};
+ask({ type: 'getSpoilers' }).then((s) => {
+  spoilers = s;
+  renderSpoilers();
+});
 
 $('chrome-settings').onclick = () => ask({ type: 'openChromeSecurity' });
 

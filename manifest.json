@@ -74,6 +74,16 @@
       "run_at": "document_start",
       "all_frames": true,
       "match_origin_as_fallback": true
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "dist/spoilers.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
     }
   ],
   "side_panel": {

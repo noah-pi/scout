@@ -8,6 +8,7 @@ const shared = { bundle: true, minify: true, legalComments: 'inline', logLevel: 
 await Promise.all([
   // Content script: Chrome can't load ES modules there, so it ships as an IIFE.
   build({ ...shared, entryPoints: ['src/content/consent.js'], outfile: 'dist/consent.js', format: 'iife' }),
+  build({ ...shared, entryPoints: ['src/content/spoilers.js'], outfile: 'dist/spoilers.js', format: 'iife' }),
   // Service-worker side of autoconsent: the main-world snippets and rule filter.
   build({ ...shared, entryPoints: ['src/background/consent-lib.js'], outfile: 'dist/consent-lib.js', format: 'esm' }),
   // The Anthropic SDK, loaded only by the offscreen document.
