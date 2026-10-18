@@ -1,10 +1,16 @@
 {
   "name": "scout",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "build:rules": "node scripts/build-rules.mjs",
+    "build": "node scripts/build.mjs",
+    "update-lists": "node scripts/update-lists.mjs",
     "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "@duckduckgo/autoconsent": "16.55.0",
+    "esbuild": "0.28.2",
+    "tldts": "7.4.18"
   }
 }

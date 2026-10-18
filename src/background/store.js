@@ -9,7 +9,7 @@ const chains = new Map();
 
 export function emptyTab(url) {
   const host = url ? new URL(url).hostname : '';
-  return { url, host, trackers: {}, fingerprinting: [], stakes: {}, flags: [], level: 'quiet', escalate: null };
+  return { url, host, committedAt: url ? Date.now() : null, trackers: {}, fingerprinting: [], stakes: {}, flags: [], consent: null, level: 'quiet', escalate: null };
 }
 
 export async function getTab(tabId) {

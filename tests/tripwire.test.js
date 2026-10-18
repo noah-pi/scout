@@ -8,6 +8,8 @@ test('registrableDomain handles plain and multi-part suffixes', () => {
   assert.equal(registrableDomain('www.paypal.com'), 'paypal.com');
   assert.equal(registrableDomain('shop.amazon.co.uk'), 'amazon.co.uk');
   assert.equal(registrableDomain('localhost'), 'localhost');
+  assert.equal(registrableDomain('paypal-login.github.io'), 'paypal-login.github.io');
+  assert.equal(registrableDomain('news.bbc.co.uk.'), 'bbc.co.uk');
 });
 
 test('skeleton folds look-alike characters', () => {
@@ -30,6 +32,10 @@ test('findLookalike flags imitations and leaves the real sites alone', () => {
   assert.deepEqual(findLookalike('amazom.com', DEFAULT_PROTECTED), { kind: 'typo', target: 'amazon.com' });
   assert.deepEqual(findLookalike('paypal.com.secure-login.io', DEFAULT_PROTECTED), { kind: 'brand-in-subdomain', target: 'paypal.com' });
   assert.deepEqual(findLookalike('www.amazon.co.uk', DEFAULT_PROTECTED), { kind: 'other-suffix', target: 'amazon.com' });
+  assert.deepEqual(findLookalike('paypal-login.github.io', DEFAULT_PROTECTED), { kind: 'brand-in-name', target: 'paypal.com' });
+  assert.deepEqual(findLookalike('secure-chase.net', DEFAULT_PROTECTED), { kind: 'brand-in-name', target: 'chase.com' });
+  assert.equal(findLookalike('s3.amazonaws.com', DEFAULT_PROTECTED), null);
+  assert.equal(findLookalike('chasebank-fan-club.org', DEFAULT_PROTECTED), null);
 });
 
 test('hasPunycode', () => {

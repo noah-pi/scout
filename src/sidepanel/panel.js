@@ -24,7 +24,7 @@ function span(text, className) {
 async function render() {
   const tabId = await activeTabId();
   if (tabId === undefined) return;
-  const { tab, receipts } = await ask({ type: 'panelState', tabId });
+  const { tab, blocked, receipts, chrome: protection } = await ask({ type: 'panelState', tabId });
 
   $('level').textContent = tab.trusted ? 'trusted' : tab.level;
   $('level').className = `level ${tab.trusted ? 'quiet' : tab.level}`;
@@ -50,10 +50,26 @@ async function render() {
   const byCompany = {};
   for (const t of Object.values(tab.trackers)) byCompany[t.company] = (byCompany[t.company] ?? 0) + t.blocked;
   const companies = Object.entries(byCompany).sort((a, b) => b[1] - a[1]);
+  const attributed = companies.reduce((n, [, count]) => n + count, 0);
+  if (blocked > attributed) companies.push(['Blocked before Scout could name them', blocked - attributed]);
   $('trackers').replaceChildren(
     ...(companies.length ? companies.map(([c, n]) => item(span(c), span(String(n)))) : [item(span('None on this page', 'muted'))]),
   );
   $('fingerprinting').textContent = tab.fingerprinting.length ? `Fingerprinting seen: ${tab.fingerprinting.join(', ')}` : '';
+  $('consent').textContent = !tab.consent
+    ? ''
+    : tab.consent.failed
+      ? `Found a ${tab.consent.cmp} cookie banner but couldn't reject it.`
+      : tab.consent.cosmetic
+        ? `Hid a ${tab.consent.cmp} cookie banner.`
+        : `Rejected cookies on a ${tab.consent.cmp} banner.`;
+
+  $('chrome').textContent =
+    protection.safeBrowsing === false
+      ? 'Safe Browsing is off. Chrome is not checking pages against its list of known scams.'
+      : protection.safeBrowsing
+        ? 'Safe Browsing is on. Extensions can\'t see whether it\'s Enhanced protection, which adds on-device scam detection; check the setting.'
+        : 'Safe Browsing status unavailable.';
 
   $('receipts').replaceChildren(
     ...receipts.map((r) =>
@@ -68,6 +84,8 @@ $('trust').onclick = async () => {
   await ask({ type: tab.trusted ? 'untrust' : 'trust', tabId });
   render();
 };
+
+$('chrome-settings').onclick = () => ask({ type: 'openChromeSecurity' });
 
 $('export').onclick = async () => {
   const data = await ask({ type: 'exportMemory' });

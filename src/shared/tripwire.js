@@ -1,17 +1,11 @@
 // Local scam signals. Pure functions only: no network, no chrome.* calls.
+import { getDomain } from '../../dist/tldts.js';
 
-// Approximation of eTLD+1. Swap for the real Public Suffix List before relying
-// on it outside the common cases.
-const MULTI_PART_SUFFIXES = new Set([
-  'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'com.au', 'net.au', 'co.nz', 'co.jp',
-  'com.br', 'com.mx', 'co.in', 'co.kr', 'com.cn', 'com.tr', 'co.za',
-]);
-
+// eTLD+1 from the Public Suffix List. Private suffixes count, so
+// paypal-login.github.io is its own site rather than "github.io".
 export function registrableDomain(host) {
-  const labels = host.toLowerCase().replace(/\.$/, '').split('.');
-  if (labels.length <= 2) return labels.join('.');
-  const lastTwo = labels.slice(-2).join('.');
-  return MULTI_PART_SUFFIXES.has(lastTwo) ? labels.slice(-3).join('.') : lastTwo;
+  const clean = host.toLowerCase().replace(/\.$/, '');
+  return getDomain(clean, { allowPrivateDomains: true }) ?? clean;
 }
 
 // The name part of a registrable domain: "paypal" for paypal.co.uk.
@@ -61,6 +55,11 @@ export function findLookalike(host, protectedDomains) {
     if (targetName.length >= 5 && editDistance(name, targetName) === 1) return { kind: 'typo', target };
     if (targetName.length >= 4 && subLabels.some((l) => l === targetName || l.startsWith(`${targetName}-`))) {
       return { kind: 'brand-in-subdomain', target };
+    }
+    // paypal-login.com, secure-chase.net. Hyphen-separated parts only, so
+    // amazonaws.com doesn't read as Amazon.
+    if (targetName.length >= 4 && name.split('-').length > 1 && name.split('-').includes(targetName)) {
+      return { kind: 'brand-in-name', target };
     }
   }
   return null;

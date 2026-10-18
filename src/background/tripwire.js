@@ -6,7 +6,7 @@ import { addReceipt, cached } from './store.js';
 import { protectedDomains } from './memory.js';
 
 const WEEK = 7 * 86_400_000;
-const HARD_LOOKALIKES = new Set(['confusable', 'typo', 'brand-in-subdomain']);
+const HARD_LOOKALIKES = new Set(['confusable', 'typo', 'brand-in-subdomain', 'brand-in-name']);
 
 export async function localFlags(host) {
   const flags = [];

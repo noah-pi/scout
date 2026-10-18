@@ -2,7 +2,7 @@
 // main-world.js and tells the service worker when the stakes go up: a password
 // field or a payment field appears.
 (() => {
-  const send = (message) => chrome.runtime.sendMessage(message).catch(() => {});
+  const send = (message) => chrome.runtime.sendMessage({ ...message, timeOrigin: performance.timeOrigin }).catch(() => {});
 
   window.addEventListener('message', (event) => {
     if (event.source !== window || event.data?.__scout !== 'fingerprint') return;
