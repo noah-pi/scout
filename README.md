@@ -92,11 +92,11 @@ When a site changes its markup and something reappears, edit `data/page-rules.js
 
 ## Interface
 
-Scout is meant to be felt rarely and read in a glance when it is.
+Scout shares a design language with Source Kit: its "darkroom paper" tokens (cool grays, a deep green that has to be earned, amber for caution, brick red for a contradiction), hairline cards, uppercase section labels, and numbers and hosts set in mono. The tab pills and easing come from filmnoah. It loads no web fonts, since a privacy tool shouldn't announce itself to a font CDN.
 
-- **Panel:** one verdict at the top (All clear, Worth a look, Stop and check), the evidence beneath it, and two actions. Everything Scout handled without asking (trackers, ads, cookie banners, folds) sits in one collapsed group. Shields and Settings use grouped lists and switches, follow the system's light or dark mode, and save as you change them. On a stop-level page the trust link reads **Trust anyway**, in red.
-- **On the page:** a fold leaves one small capsule saying what was hidden and why, with **Show**. It is styled to sit on light and dark pages alike and resets page CSS so sites can't restyle it. Spoilers sit under a frosted veil with a **Spoiler: Title · Show** label. Reddit comments with near-identical wording get a small orange tag.
-- **Badge:** nothing on quiet pages, an orange dot for a note, a red `!` for a stop.
+- **Panel:** a verdict card states what Scout saw, and the icon carries the status. The card reads **Nothing found** in neutral gray, **Worth a look** in amber, **Stop and check** in red, or **You trust this site** in green. Green appears only for a site you chose to trust. Everything Scout handled without asking is set as a label table under **Quietly handled**. Ink marks the one thing to do, so Investigate turns dark only when a page warrants it. On a stop-level page the trust button reads **Trust anyway**, outlined in red. Settings save as you change them.
+- **On the page:** a fold leaves one capsule with Scout's mark, the reason, and **Show**. It resets page CSS so sites can't restyle it, and reads on light and dark pages. Spoilers sit under a frosted veil with an ink capsule reading **SPOILER: Title Show**. Reddit comments with near-identical wording get a small amber tag.
+- **Badge:** nothing on quiet pages, an amber dot for a note, a red `!` for a stop.
 
 ## Known limits
 

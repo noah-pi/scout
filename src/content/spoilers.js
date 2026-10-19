@@ -28,14 +28,17 @@ function style() {
     .${HIDDEN} > .scout-spoiler-label, .${HIDDEN} > .scout-spoiler-label * { all: initial; }
     .${HIDDEN} > .scout-spoiler-label { position: absolute; inset: 0; z-index: 2147483000; display: flex;
       align-items: center; justify-content: center; padding: 6px; cursor: pointer; border-radius: 10px;
-      background: rgba(128, 128, 128, .12); -webkit-backdrop-filter: blur(10px) saturate(1.4); backdrop-filter: blur(10px) saturate(1.4); }
-    .${HIDDEN} > .scout-spoiler-label > span { display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
-      padding: 5px 12px; border-radius: 999px; background: rgba(29, 29, 31, .78);
-      box-shadow: 0 2px 10px rgba(0, 0, 0, .16); color: #f5f5f7 !important; text-shadow: none !important;
-      font: 500 12px/1.3 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif;
-      letter-spacing: -.003em; -webkit-font-smoothing: antialiased; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .${HIDDEN} > .scout-spoiler-label b { font: inherit; font-weight: 600; color: #f5f5f7 !important; text-shadow: none !important; }
-    .${HIDDEN} > .scout-spoiler-label i { font: inherit; font-style: normal; font-weight: 600; color: #64d2ff !important; text-shadow: none !important; }
+      border: 1px solid rgba(120, 120, 125, .22); background: rgba(120, 120, 125, .1);
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+    .${HIDDEN} > .scout-spoiler-label > span { display: inline-flex; align-items: baseline; gap: 6px; max-width: 100%;
+      padding: 6px 13px; border-radius: 999px; background: rgba(13, 13, 15, .88);
+      color: #f5f5f7 !important; text-shadow: none !important;
+      font: 600 12px/1.3 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .${HIDDEN} > .scout-spoiler-label u { font: inherit; font-size: 9.5px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase;
+      text-decoration: none; color: #c7c7cc !important; text-shadow: none !important; }
+    .${HIDDEN} > .scout-spoiler-label b { font: inherit; color: #f5f5f7 !important; text-shadow: none !important; }
+    .${HIDDEN} > .scout-spoiler-label i { font: inherit; font-style: normal; font-weight: 700; color: #7ed6a4 !important; text-shadow: none !important; }
   `;
   (document.head ?? document.documentElement).append(css);
 }
@@ -63,13 +66,15 @@ function hide(el, titles) {
   label.className = 'scout-spoiler-label';
   label.setAttribute('role', 'button');
   label.setAttribute('aria-label', `Spoiler for ${titles.join(', ')}. Click to reveal.`);
-  // Reads "Spoiler: Severance · Show" in a capsule over the frosted passage.
+  // An ink capsule over the frosted passage: SPOILER: Severance  Show.
   const chip = document.createElement('span');
+  const kicker = document.createElement('u');
+  kicker.textContent = 'Spoiler: ';
   const what = document.createElement('b');
-  what.textContent = `Spoiler: ${titles.join(', ')}`;
+  what.textContent = titles.join(', ');
   const show = document.createElement('i');
   show.textContent = 'Show';
-  chip.append(what, document.createTextNode(' · '), show);
+  chip.append(kicker, what, show);
   label.append(chip);
   el.append(label);
 }

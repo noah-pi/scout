@@ -30,13 +30,26 @@ const empty = (text) => li('row empty', text);
 // Tones from the worker, mapped onto the panel's three colors.
 const TONE = { bad: 'bad', tampered: 'bad', mixed: 'mixed', ai: 'mixed', ok: 'good', captured: 'good', credentials: 'good' };
 
+// Verdicts state what Scout saw; the icon carries the status. Nothing found
+// stays neutral gray: green is for a site you chose to trust.
+const RING = '<circle cx="12" cy="12" r="9"/>';
 const LEVEL = {
-  quiet: { verdict: 'All clear', glyph: 'M5 12.5l4.2 4.2L19 7' },
-  note: { verdict: 'Worth a look', glyph: 'M12 7v6 M12 16.5v.5' },
-  stop: { verdict: 'Stop and check', glyph: 'M12 7v6 M12 16.5v.5' },
-  trusted: { verdict: 'Trusted site', glyph: 'M5 12.5l4.2 4.2L19 7' },
-  idle: { verdict: 'Nothing to check', glyph: 'M7 12h10' },
+  quiet: { verdict: 'Nothing found', glyph: '<path d="M18.4 5.6A9 9 0 1 0 21 12"/><circle class="fill" cx="12" cy="12" r="3.4"/>' },
+  note: { verdict: 'Worth a look', glyph: `${RING}<path d="M12 7.5v5.2"/><circle class="fill" cx="12" cy="16.3" r="1.1"/>` },
+  stop: { verdict: 'Stop and check', glyph: `${RING}<path d="M9 9l6 6M15 9l-6 6"/>` },
+  trusted: { verdict: 'You trust this site', glyph: `${RING}<path d="M8.2 12.3l2.6 2.6 5-5.2"/>` },
+  idle: { verdict: 'No page open', glyph: `${RING}<path d="M8.5 12h7"/>` },
 };
+
+function lede(level, tab) {
+  const soft = tab.flags.filter((f) => f.severity === 'soft').length;
+  if (level === 'idle') return 'Open a web page and Scout will look it over.';
+  if (level === 'trusted') return 'Warnings are off here. Trust lapses after a year, or if the domain changes hands.';
+  if (level === 'stop') return 'Something here doesn’t match. Don’t type anything until you’ve read why.';
+  if (level === 'note') return `${soft === 1 ? 'One thing' : `${soft} things`} on this page could mislead. Read below.`;
+  const stakes = tab.stakes && Object.entries(tab.stakes).filter(([, v]) => v).map(([k]) => ({ password: 'a password', payment: 'card details', otp: 'a one-time code', seed: 'a recovery phrase' })[k]);
+  return stakes?.length ? `This page asks for ${stakes.join(' and ')}. No warning signs so far.` : 'No warning signs on this page.';
+}
 
 const VERDICTS = { likely_scam: 'Likely a scam', unclear: "Can't tell", likely_safe: 'Nothing wrong found' };
 const VERDICT_TONE = { likely_scam: 'bad', unclear: 'mixed', likely_safe: 'good' };
@@ -71,14 +84,19 @@ async function render() {
   const level = !tab.host ? 'idle' : tab.trusted ? 'trusted' : tab.level;
   $('hero').dataset.level = level;
   $('verdict').textContent = LEVEL[level].verdict;
-  $('glyph-path').setAttribute('d', LEVEL[level].glyph);
-  $('host').textContent = tab.host || 'Open a page to check it';
+  $('glyph').innerHTML = LEVEL[level].glyph;
+  $('lede').textContent = lede(level, tab);
+  $('host').textContent = tab.host ?? '';
   $('page-actions').hidden = !tab.host;
+  // Ink marks the one thing to do; on a quiet page there isn't one.
+  $('investigate').classList.toggle('primary', level === 'note' || level === 'stop');
+  $('investigate').classList.toggle('secondary', !(level === 'note' || level === 'stop'));
   $('trust').hidden = !tab.host;
   $('trust').textContent = tab.trusted ? 'Stop trusting this site' : level === 'stop' ? 'Trust anyway' : 'Trust this site';
   $('trust').classList.toggle('danger', level === 'stop');
 
-  const flags = tab.trusted ? [] : tab.flags;
+  // Fingerprinting is reported in the label below, with what was read.
+  const flags = tab.trusted ? [] : tab.flags.filter((f) => f.kind !== 'fingerprinting');
   $('notes').hidden = !flags.length;
   $('notes').replaceChildren(
     ...flags.map((flag) => {
@@ -133,29 +151,35 @@ function renderBlocked(tab, blocked) {
   const unnamed = Math.max(0, blocked - attributed);
   const rows = [...companies];
   if (unnamed) rows.push(['Before Scout could name them', unnamed]);
-  if (tab.ads) rows.push(['Ads', tab.ads]);
-
   const trackers = attributed + unnamed;
-  const parts = [trackers && `${plural(trackers, 'tracker')}${companies.length ? ` from ${plural(companies.length, 'company', 'companies')}` : ''}`, tab.ads && plural(tab.ads, 'ad')].filter(Boolean);
-  $('blocked-summary').textContent = parts.length ? `Blocked ${parts.join(' · ')}` : 'Nothing blocked on this page';
+
+  const value = (row, text, tone = '') => {
+    const v = row.querySelector('.v');
+    v.textContent = text;
+    v.className = `v ${tone}`.trim();
+  };
+  value($('blocked-toggle'), trackers ? `${trackers}${companies.length ? ` · ${plural(companies.length, 'company', 'companies')}` : ''}` : 'None', trackers ? '' : 'dim');
   const toggle = $('blocked-toggle');
   toggle.disabled = !rows.length;
-  toggle.querySelector('.chev').hidden = !rows.length;
   if (!rows.length) {
     toggle.setAttribute('aria-expanded', 'false');
     $('trackers').hidden = true;
   }
   $('trackers').replaceChildren(...rows.map(([name, n]) => li('', el('span', '', name), el('span', 'count', String(n)))));
 
+  $('fingerprinting').hidden = !tab.fingerprinting.length;
+  value($('fingerprinting'), `${tab.fingerprinting.join(', ')} · seen`, 'dim');
+  $('ads-row').hidden = !tab.ads;
+  $('ads').textContent = String(tab.ads ?? 0);
   $('consent').hidden = !tab.consent;
   if (tab.consent)
-    $('consent').textContent = tab.consent.failed
-      ? `Found a ${tab.consent.cmp} cookie banner but couldn’t reject it`
-      : tab.consent.cosmetic
-        ? `Hid a ${tab.consent.cmp} cookie banner`
-        : `Rejected cookies on a ${tab.consent.cmp} banner`;
+    value(
+      $('consent'),
+      `${tab.consent.failed ? 'Couldn’t reject' : tab.consent.cosmetic ? 'Hidden' : 'Rejected'} · ${tab.consent.cmp}`,
+      tab.consent.failed ? 'warn' : '',
+    );
   $('slop').hidden = !tab.slopHidden;
-  $('slop').textContent = `Folded ${plural(tab.slopHidden ?? 0, 'result')} from AI-heavy sites`;
+  value($('slop'), `${tab.slopHidden ?? 0} folded`);
 }
 
 $('blocked-toggle').onclick = () => {
@@ -387,9 +411,9 @@ function renderShields(tab, site, shields, trusted, extensions) {
 
 function renderCalm(tab, shields, rules) {
   const calm = tab.calm ?? {};
-  const parts = [calm.folded && `folded ${calm.folded}`, calm.aiFolded && `hid ${plural(calm.aiFolded, 'AI-labeled post')}`, calm.paused && `paused ${plural(calm.paused, 'video')}`].filter(Boolean);
+  const parts = [calm.folded && `${calm.folded} folded`, calm.aiFolded && `${calm.aiFolded} AI-labeled`, calm.paused && `${plural(calm.paused, 'video')} paused`].filter(Boolean);
   $('calm-status').hidden = !parts.length;
-  $('calm-status').textContent = parts.length ? `Calm ${parts.join(', ')}` : '';
+  $('calm-status').querySelector('.v').textContent = parts.join(' · ');
 
   $('calm-toggles').replaceChildren(
     ...rules.calm.map(({ key, label }) => {
@@ -434,7 +458,7 @@ $('import').onchange = async (event) => {
 
 // Tabs. The choice is a per-viewer convenience, so localStorage is fine;
 // it may be unavailable, and the panel works without it.
-const tabs = [...document.querySelectorAll('.segmented button')];
+const tabs = [...document.querySelectorAll('.pills button')];
 function showTab(name) {
   for (const b of tabs) b.setAttribute('aria-selected', String(b.dataset.tab === name));
   for (const m of document.querySelectorAll('main[data-panel]')) m.hidden = m.dataset.panel !== name;
@@ -444,7 +468,7 @@ function showTab(name) {
   } catch {}
 }
 for (const b of tabs) b.onclick = () => showTab(b.dataset.tab);
-document.querySelector('.segmented').onkeydown = (e) => {
+document.querySelector('.pills').onkeydown = (e) => {
   const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
   if (!step) return;
   const i = tabs.findIndex((b) => b.getAttribute('aria-selected') === 'true');

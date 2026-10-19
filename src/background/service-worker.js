@@ -58,8 +58,8 @@ async function chromeProtection() {
 
 const BADGE = {
   quiet: { text: '', color: '#00000000' },
-  note: { text: '•', color: '#FF9F0A' },
-  stop: { text: '!', color: '#FF3B30' },
+  note: { text: '•', color: '#A4741C' },
+  stop: { text: '!', color: '#C03527' },
 };
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});

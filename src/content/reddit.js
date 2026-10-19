@@ -55,9 +55,9 @@ function style() {
   css.id = 'scout-census-style';
   css.textContent = `
     [data-scout-similar]::before { content: "Similar wording · " attr(data-scout-similar) " others";
-      display: inline-block; margin: 2px 0 6px; padding: 2px 9px; border-radius: 999px;
-      font: 500 11px/1.5 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif;
-      letter-spacing: -.003em; color: #c93400; background: rgba(255, 149, 0, .12); border: .5px solid rgba(255, 149, 0, .3); }
+      display: inline-block; margin: 2px 0 6px; padding: 3px 9px; border-radius: 999px;
+      font: 800 9.5px/1.4 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      letter-spacing: .6px; text-transform: uppercase; color: #a4741c; background: rgba(164, 116, 28, .12); }
   `;
   (document.head ?? document.documentElement).append(css);
 }
