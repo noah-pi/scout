@@ -39,6 +39,13 @@ export function buildMatcher(watchlist) {
       return [...found];
     },
     test: (text) => regex.test(text),
+    // A bare mention: a tag, a nav link, a "Severance S2" chip. Once the
+    // titles are taken out, fewer than four words remain, so nothing in it
+    // can spoil anything and it is left alone.
+    mentionOnly(text) {
+      const rest = String(text).replace(new RegExp(regex.source, 'giu'), ' ');
+      return (rest.match(/[\p{L}\p{N}]+/gu) ?? []).length < 4;
+    },
   };
 }
 

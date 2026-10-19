@@ -16,7 +16,9 @@ const GOOGLE = `<!doctype html><title>q - Google Search</title><div id="rso">
 <div id="ai" data-hveid="1"><h1>AI Overview</h1><p>A generated summary.</p></div>
 <div id="r1" data-hveid="2"><a href="https://example.org"><h3>Result</h3></a></div></div>`;
 const NEWS = `<!doctype html><title>News</title><div id="intercom-container">chat</div><p class="annoying">Promo strip</p>
-<video id="v" muted autoplay loop src="data:video/mp4;base64,"></video>`;
+<video id="v" muted autoplay loop src="data:video/mp4;base64,"></video>
+<video id="w" muted loop src="data:video/mp4;base64,"></video>
+<script>setTimeout(() => w.play().catch(() => {}), 300); setTimeout(() => w.play().catch(() => {}), 700);</script>`;
 
 const bundled = JSON.parse(readFileSync(new URL('../../data/page-rules.json', import.meta.url), 'utf8'));
 const updated = { ...bundled, version: bundled.version + 1, updated: '2099-01-01', calm: { ...bundled.calm, chat: { ...bundled.calm.chat, selectors: ['p:::broken', ...bundled.calm.chat.selectors, '.annoying'] } } };
@@ -43,6 +45,7 @@ test('YouTube: Shorts gone, the AI-labeled video folded, the rest untouched', as
   const page = await visit(browser.context, `http://www.youtube.com:${server.port}/yt`, 2000);
   assert.deepEqual(await shown(page, ['v1', 'v2', 'shorts']), { v1: true, v2: false, shorts: false });
   assert.match(await page.textContent('.scout-calm-note'), /YouTube labels this post as made with AI/);
+  assert.equal((await browser.ext.tabState()).calm.hidden.shorts, 1, 'the panel can see what CSS hid');
   await page.click('.scout-calm-note');
   assert.equal((await shown(page, ['v2'])).v2, true);
 });
@@ -62,6 +65,8 @@ test('any site: chat bubble hidden, autoplaying video paused', async () => {
   const page = await visit(browser.context, `http://news.example.com:${server.port}/news`, 2000);
   assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('intercom-container')).display), 'none');
   assert.equal(await page.evaluate(() => document.getElementById('v').autoplay), false);
+  // A player that retries play() stays paused without a click.
+  assert.equal(await page.evaluate(() => document.getElementById('w').paused), true);
 });
 
 test('a remote rules update applies, and a broken selector fails alone', async () => {

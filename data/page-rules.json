@@ -1,11 +1,13 @@
 {
-  "version": 1,
-  "updated": "2026-10-18",
+  "version": 2,
+  "updated": "2026-10-20",
   "note": "Page rules for Scout's calm layer and AI-label filter. Scout fetches this file daily from the repo; it can only hide things (CSS selectors and text patterns, never code). Edit, push, and every install picks it up within a day.",
   "calm": {
     "shorts": {
       "label": "Hide YouTube Shorts",
-      "sites": ["youtube.com"],
+      "sites": [
+        "youtube.com"
+      ],
       "selectors": [
         "ytd-reel-shelf-renderer",
         "ytd-rich-shelf-renderer[is-shorts]",
@@ -15,21 +17,46 @@
         "ytd-video-renderer:has(a[href^='/shorts/'])",
         "ytd-guide-entry-renderer:has(a[title='Shorts'])",
         "ytd-mini-guide-entry-renderer[aria-label='Shorts']",
-        "yt-chip-cloud-chip-renderer:has(yt-formatted-string[title='Shorts'])"
+        "yt-chip-cloud-chip-renderer:has(yt-formatted-string[title='Shorts'])",
+        "ytd-rich-section-renderer:has(ytm-shorts-lockup-view-model-v2)",
+        "grid-shelf-view-model:has(ytm-shorts-lockup-view-model-v2)",
+        "ytm-shorts-lockup-view-model-v2",
+        "yt-tab-shape[tab-title='Shorts']"
       ]
     },
     "aiOverviews": {
       "label": "Hide Google's AI Overviews",
-      "sites": ["google.*"],
-      "selectors": [".M8OgIe", "div[jscontroller='EYwa3d']"],
+      "sites": [
+        "google.*"
+      ],
+      "selectors": [
+        ".M8OgIe",
+        "div[jscontroller='EYwa3d']"
+      ],
       "textBlocks": {
-        "texts": ["AI Overview", "AI overview", "Übersicht mit KI", "Aperçu IA", "Resumen creado con IA", "Panoramica IA", "Visão geral criada por IA", "AI による概要", "AI 개요", "AI 摘要"],
-        "container": "#rso > div, #center_col > div, [data-hveid], block-component"
-      }
+        "texts": [
+          "AI Overview",
+          "AI overview",
+          "Übersicht mit KI",
+          "Aperçu IA",
+          "Resumen creado con IA",
+          "Panoramica IA",
+          "Visão geral criada por IA",
+          "AI による概要",
+          "AI 개요",
+          "AI 摘要"
+        ],
+        "container": "#rso > div, [data-hveid]",
+        "boundary": "a h3",
+        "note": "Google AI Overview"
+      },
+      "note_on_textBlocks": "From the AI Overview heading, Scout folds the largest block that holds no organic result (a link with an h3). Class names are a fallback; Google renames them often."
     },
     "chat": {
       "label": "Hide chat bubbles",
-      "sites": ["*"],
+      "sites": [
+        "*"
+      ],
       "selectors": [
         "#intercom-container",
         ".intercom-lightweight-app",
@@ -48,7 +75,9 @@
     },
     "popups": {
       "label": "Hide newsletter and notification pop-ups",
-      "sites": ["*"],
+      "sites": [
+        "*"
+      ],
       "selectors": [
         "#onesignal-slidedown-container",
         "#onesignal-bell-container",
@@ -64,8 +93,23 @@
     },
     "autoplay": {
       "label": "Stop videos that play by themselves",
-      "sites": ["*"],
-      "exempt": ["youtube.com", "vimeo.com", "twitch.tv", "netflix.com", "tiktok.com", "instagram.com", "max.com", "hulu.com", "disneyplus.com", "primevideo.com", "meet.google.com", "zoom.us"],
+      "sites": [
+        "*"
+      ],
+      "exempt": [
+        "youtube.com",
+        "vimeo.com",
+        "twitch.tv",
+        "netflix.com",
+        "tiktok.com",
+        "instagram.com",
+        "max.com",
+        "hulu.com",
+        "disneyplus.com",
+        "primevideo.com",
+        "meet.google.com",
+        "zoom.us"
+      ],
       "behavior": "pause-autoplay"
     }
   },
@@ -84,12 +128,43 @@
       "Imagined with AI"
     ],
     "platforms": {
-      "YouTube": { "sites": ["youtube.com"], "container": "ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-reel-item-renderer, ytm-shorts-lockup-view-model, ytd-reel-video-renderer" },
-      "Instagram": { "sites": ["instagram.com"], "container": "article" },
-      "Facebook": { "sites": ["facebook.com"], "container": "[role='article'], div[data-pagelet^='FeedUnit']" },
-      "Threads": { "sites": ["threads.net", "threads.com"], "container": "div[data-pressable-container='true'], [role='article']" },
-      "TikTok": { "sites": ["tiktok.com"], "container": "[data-e2e='recommend-list-item-container'], article, [data-e2e='user-post-item']" },
-      "Pinterest": { "sites": ["pinterest.com"], "container": "[data-test-id='pin'], [data-grid-item='true'], div[role='listitem']" }
+      "YouTube": {
+        "sites": [
+          "youtube.com"
+        ],
+        "container": "ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-reel-item-renderer, ytm-shorts-lockup-view-model, ytd-reel-video-renderer"
+      },
+      "Instagram": {
+        "sites": [
+          "instagram.com"
+        ],
+        "container": "article"
+      },
+      "Facebook": {
+        "sites": [
+          "facebook.com"
+        ],
+        "container": "[role='article'], div[data-pagelet^='FeedUnit']"
+      },
+      "Threads": {
+        "sites": [
+          "threads.net",
+          "threads.com"
+        ],
+        "container": "div[data-pressable-container='true'], [role='article']"
+      },
+      "TikTok": {
+        "sites": [
+          "tiktok.com"
+        ],
+        "container": "[data-e2e='recommend-list-item-container'], article, [data-e2e='user-post-item']"
+      },
+      "Pinterest": {
+        "sites": [
+          "pinterest.com"
+        ],
+        "container": "[data-test-id='pin'], [data-grid-item='true'], div[role='listitem']"
+      }
     }
   }
 }

@@ -44,3 +44,12 @@ test('results default to hidden when missing, refused or malformed', () => {
   assert.deepEqual(parseSpoilerResults({ stop_reason: 'refusal', content: [] }, ['p1']), { p1: true });
   assert.deepEqual(parseSpoilerResults({ content: [{ type: 'text', text: 'nope' }] }, ['p1']), { p1: true });
 });
+
+test('a bare mention is told apart from a passage', () => {
+  const m = buildMatcher([{ title: 'Severance', aliases: 'Lumon' }]);
+  assert.ok(m.mentionOnly('Severance'));
+  assert.ok(m.mentionOnly('Severance Season 2'));
+  assert.ok(m.mentionOnly('#Lumon · Severance'));
+  assert.ok(!m.mentionOnly('Ms. Casey dies in the Severance finale'));
+  assert.ok(!m.mentionOnly('Severance season three starts filming in March'));
+});

@@ -22,7 +22,14 @@ export function validateRules(raw, isValidSelector = () => true) {
       selectors: sel(rule.selectors),
       exempt: strings(rule.exempt, MAX.sites, 80),
       behavior: rule.behavior === 'pause-autoplay' ? 'pause-autoplay' : undefined,
-      textBlocks: rule.textBlocks ? { texts: strings(rule.textBlocks.texts, MAX.texts, MAX.text), container: sel([rule.textBlocks.container])[0] ?? null } : undefined,
+      textBlocks: rule.textBlocks
+        ? {
+            texts: strings(rule.textBlocks.texts, MAX.texts, MAX.text),
+            container: sel([rule.textBlocks.container])[0] ?? null,
+            boundary: sel([rule.textBlocks.boundary])[0] ?? null,
+            note: strings([rule.textBlocks.note], 1, 80)[0] ?? null,
+          }
+        : undefined,
     };
   }
   const labels = raw.aiLabels ?? {};

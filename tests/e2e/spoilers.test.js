@@ -6,6 +6,9 @@ const PAGE = `<!doctype html><title>TV news</title>
 <p id="spoil">In the Severance finale, Mark Scout finally learns that Ms. Casey dies in the testing floor.</p>
 <p id="clean">Severance season three starts filming in March, Apple says.</p>
 <p id="other">The weather in Lisbon is mild this week.</p>
+<nav><a id="tag" href="#">Severance</a> <a href="#">Severance Season 2</a></nav>
+<article id="story"><h2>Recap</h2><p id="inner">Episode nine of Severance ends when Irving dies in the elevator.</p>
+<p id="aside">Our critic rates the episode four stars.</p><img id="still" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></article>
 <script>setTimeout(() => { const p = document.createElement('p'); p.id = 'late'; p.textContent = 'Lumon fans: Helly dies at the end of episode nine.'; document.body.append(p); }, 1500);</script>`;
 
 const calls = [];
@@ -45,11 +48,19 @@ test('hides spoilers, reveals clean mentions, catches late content, and reveals 
   assert.equal(request.model, 'claude-haiku-5-5');
   assert.equal(JSON.parse(request.messages[0].content).watched_so_far.Severance, 'S2E3');
 
+  // A bare mention in a nav link is never touched or sent.
+  assert.equal(await page.getAttribute('#tag', 'class'), null);
+  assert.ok(calls.every((c) => JSON.parse(c.messages[0].content).passages.every((p) => p.text.trim() !== 'Severance')));
+  // A spoiler inside an article veils the whole article, behind one label.
+  assert.equal(await page.getAttribute('#story', 'class'), 'scout-spoiler');
+  assert.equal(await page.getAttribute('#inner', 'class'), '');
+  assert.equal(await page.locator('#story .scout-spoiler-label').count(), 1);
+
   await page.click('#spoil');
   assert.equal((await classes(page)).spoil, '');
 
   const state = await browser.ext.tabState();
-  assert.equal(state.spoilersHidden, 2);
+  assert.equal(state.spoilersHidden, 3);
 });
 
 test('verdicts are cached: a reload makes no new calls', async () => {

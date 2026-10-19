@@ -11,9 +11,34 @@ const host = location.hostname;
 let folded = 0;
 let aiFolded = 0;
 let paused = 0;
+let hidden = {}; // rule key -> elements its selectors currently hide
 
 const report = () =>
-  chrome.runtime.sendMessage({ type: 'calmCount', counts: { folded, aiFolded, paused } }).catch(() => {});
+  chrome.runtime.sendMessage({ type: 'calmCount', counts: { folded, aiFolded, paused, hidden } }).catch(() => {});
+
+// CSS hides leave no trace, so count what each rule's selectors match; the
+// panel shows it, and a rule that never matches anything is visibly broken.
+function counter(active) {
+  let timer = null;
+  const count = () => {
+    timer = null;
+    const next = {};
+    for (const [key, r] of active) {
+      let n = 0;
+      for (const sel of r.selectors) {
+        try {
+          n += document.querySelectorAll(sel).length;
+        } catch {}
+      }
+      if (n) next[key] = n;
+    }
+    if (JSON.stringify(next) !== JSON.stringify(hidden)) {
+      hidden = next;
+      report();
+    }
+  };
+  return () => (timer ??= setTimeout(count, 1500));
+}
 
 function css(text) {
   const style = document.createElement('style');
@@ -32,6 +57,15 @@ function fold(block, why, counter) {
   return true;
 }
 
+// From a label, the largest block that still contains none of `boundary`:
+// for Google, everything around "AI Overview" up to, not including, the first
+// real result. Survives Google renaming its classes, which it does often.
+function climb(el, boundary) {
+  let block = el;
+  for (let up = el.parentElement; up && up !== document.body && !up.querySelector(boundary); up = up.parentElement) block = up;
+  return block === el ? null : block;
+}
+
 // Short elements whose whole text matches, e.g. a label chip reading "AI info".
 function* labelled(root, matches) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -45,7 +79,7 @@ function pauseAutoplay(exempt) {
   // Videos with the autoplay attribute lose it as they appear; scripts that
   // call play() on their own are caught by the listener below.
   const disarm = (v) => {
-    if (!v.autoplay || v.dataset.scoutAllowed) return;
+    if (!v.autoplay) return;
     v.autoplay = false;
     v.removeAttribute('autoplay');
     v.pause();
@@ -67,12 +101,16 @@ function pauseAutoplay(exempt) {
     'play',
     (event) => {
       const v = event.target;
-      if (!(v instanceof HTMLVideoElement) || Date.now() - lastGesture < 1500 || v.dataset.scoutAllowed) return;
+      // Players retry play() when paused, so nothing short of your own click
+      // or key press lets a video start. Count each video once.
+      if (!(v instanceof HTMLVideoElement) || Date.now() - lastGesture < 1500) return;
       v.pause();
       v.autoplay = false;
-      v.dataset.scoutAllowed = '1'; // the next play is yours
-      paused++;
-      report();
+      if (!v.dataset.scoutPaused) {
+        v.dataset.scoutPaused = '1';
+        paused++;
+        report();
+      }
     },
     true,
   );
@@ -96,8 +134,11 @@ async function start() {
   // voiding the whole list.
   css(NOTE_CSS + selectors.map((s) => `\n${s} { display: none !important; }`).join(''));
   for (const [, r] of active) if (r.behavior === 'pause-autoplay') pauseAutoplay(r.exempt);
+  const recount = counter(active.filter(([, r]) => r.selectors.length));
+  new MutationObserver(recount).observe(document.documentElement, { childList: true, subtree: true });
+  recount();
 
-  const textRules = active.filter(([, r]) => r.textBlocks?.texts?.length && r.textBlocks.container).map(([, r]) => ({ ...r.textBlocks, matches: labelMatcher(r.textBlocks.texts), label: r.label }));
+  const textRules = active.filter(([, r]) => r.textBlocks?.texts?.length && (r.textBlocks.container || r.textBlocks.boundary)).map(([, r]) => ({ ...r.textBlocks, matches: labelMatcher(r.textBlocks.texts), label: r.label }));
   const platform = aiOn ? Object.entries(rules.aiLabels.platforms).find(([, p]) => onSite(p.sites, host)) : null;
   const aiMatches = platform ? labelMatcher(rules.aiLabels.texts) : null;
   if (!textRules.length && !platform) return;
@@ -107,7 +148,7 @@ async function start() {
     let changed = false;
     for (const rule of textRules) {
       for (const el of labelled(root, rule.matches)) {
-        changed = fold(el.closest(rule.container), 'Google AI Overview', () => folded++) || changed;
+        changed = fold(rule.boundary ? climb(el, rule.boundary) : el.closest(rule.container), rule.note ?? 'Hidden by Calm', () => folded++) || changed;
       }
     }
     if (platform) {

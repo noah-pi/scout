@@ -1,17 +1,21 @@
 // Spoiler shield, page side. Bundled to dist/spoilers.js.
-// Blurs every passage that mentions a watchlist title the moment it's found,
-// then asks the service worker which ones actually spoil. Clean passages are
-// revealed; spoilers stay hidden behind a click.
+// Finds passages that mention a watchlist title, skipping bare mentions (tags,
+// nav links, chips), and dims each one while the service worker asks Haiku
+// whether it spoils. Clean passages come back at once. A spoiler veils the
+// whole article, post or comment it sits in, behind one label and a click.
 import { PASSAGE_LIMIT, buildMatcher, passageKey } from '../shared/spoilers.js';
 
 const HIDDEN = 'scout-spoiler';
 const PENDING = 'scout-spoiler-pending';
 const SKIP = 'script, style, noscript, textarea, input, select, code, pre, svg, [contenteditable], .scout-spoiler-label';
 const BLOCKS = 'p, li, blockquote, dd, td, h1, h2, h3, h4, h5, h6, figcaption, article, section, div, span, a';
+// What a confirmed spoiler hides: the story or post around it, not the page.
+const UNITS = 'article, [role="article"], [itemprop="articleBody"], shreddit-post, shreddit-comment, ytd-comment-thread-renderer, ytd-rich-item-renderer, ytd-video-renderer';
 
 let matcher = null;
 let mode = 'ai';
 const seen = new WeakSet();
+const opened = new WeakSet(); // veils you lifted stay lifted
 const queue = new Map(); // id -> { el, text, titles }
 
 function style() {
@@ -21,23 +25,31 @@ function style() {
   // Text is hidden with transparent color plus a soft shadow rather than a
   // filter, so the warning label inside stays sharp.
   css.textContent = `
-    .${PENDING}, .${PENDING} *, .${HIDDEN}, .${HIDDEN} * {
+    .${PENDING}, .${PENDING} * { color: transparent !important; text-shadow: 0 0 7px rgba(128, 128, 128, .6) !important; }
+    .${PENDING} :is(img, video, picture, canvas) { filter: blur(10px); }
+    .${HIDDEN}, .${HIDDEN} * {
       color: transparent !important; text-shadow: 0 0 9px rgba(128, 128, 128, .85) !important; cursor: pointer; }
-    .${PENDING} :is(img, video, picture, canvas), .${HIDDEN} :is(img, video, picture, canvas) { filter: blur(14px); }
-    .${HIDDEN} { position: relative; }
+    .${HIDDEN} :is(img, video, picture, canvas, iframe) { filter: blur(18px) !important; }
+    .${HIDDEN} { position: relative; outline: 1px solid rgba(120, 120, 125, .22); outline-offset: 4px; border-radius: 6px; }
+    .${HIDDEN}[data-scout-size='line'] { min-height: 34px; }
+    .${HIDDEN}[data-scout-size='small'] { outline-style: dashed; }
     .${HIDDEN} > .scout-spoiler-label, .${HIDDEN} > .scout-spoiler-label * { all: initial; }
     .${HIDDEN} > .scout-spoiler-label { position: absolute; inset: 0; z-index: 2147483000; display: flex;
-      align-items: center; justify-content: center; padding: 6px; cursor: pointer; border-radius: 10px;
-      border: 1px solid rgba(120, 120, 125, .22); background: rgba(120, 120, 125, .1);
-      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
-    .${HIDDEN} > .scout-spoiler-label > span { display: inline-flex; align-items: baseline; gap: 6px; max-width: 100%;
-      padding: 6px 13px; border-radius: 999px; background: rgba(13, 13, 15, .88);
+      align-items: center; justify-content: center; cursor: pointer; }
+    /* A tall article keeps its label in view as you scroll past it. */
+    .${HIDDEN}[data-scout-size='tall'] > .scout-spoiler-label { position: sticky; top: 40vh; inset: auto; height: 0; overflow: visible; }
+    .${HIDDEN} > .scout-spoiler-label > span { display: inline-flex; align-items: baseline; gap: 6px; max-width: calc(100% - 12px);
+      padding: 6px 13px; border-radius: 999px; background: rgba(13, 13, 15, .9);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
       color: #f5f5f7 !important; text-shadow: none !important;
       font: 600 12px/1.3 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       -webkit-font-smoothing: antialiased; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .${HIDDEN}[data-scout-size='tall'] > .scout-spoiler-label > span { transform: translateY(28px); }
+    .${HIDDEN}[data-scout-size='compact'] > .scout-spoiler-label > span { padding: 5px 10px; gap: 5px; }
+    .${HIDDEN}[data-scout-size='compact'] > .scout-spoiler-label b { display: none; }
     .${HIDDEN} > .scout-spoiler-label u { font: inherit; font-size: 9.5px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase;
       text-decoration: none; color: #c7c7cc !important; text-shadow: none !important; }
-    .${HIDDEN} > .scout-spoiler-label b { font: inherit; color: #f5f5f7 !important; text-shadow: none !important; }
+    .${HIDDEN} > .scout-spoiler-label b { font: inherit; color: #f5f5f7 !important; text-shadow: none !important; overflow: hidden; text-overflow: ellipsis; }
     .${HIDDEN} > .scout-spoiler-label i { font: inherit; font-style: normal; font-weight: 700; color: #7ed6a4 !important; text-shadow: none !important; }
   `;
   (document.head ?? document.documentElement).append(css);
@@ -55,28 +67,52 @@ function blockFor(node) {
 
 function reveal(el) {
   el.classList.remove(HIDDEN, PENDING);
+  delete el.dataset.scoutSize;
+  el.removeAttribute('title');
   el.querySelector(':scope > .scout-spoiler-label')?.remove();
+  for (const inner of el.querySelectorAll(`.${PENDING}`)) inner.classList.remove(PENDING);
 }
 
-function hide(el, titles) {
-  el.classList.remove(PENDING);
+// How big the veiled box is decides how it is labelled. Inline bits and tiny
+// boxes get no pill (it would overflow them), just a tooltip; narrow cards get
+// a short one; one-line blocks grow enough to hold it; tall articles get a
+// label that follows you down the page.
+function sizeOf(el) {
+  const { width, height } = el.getBoundingClientRect();
+  if (getComputedStyle(el).display.startsWith('inline') || width < 110 || height < 12) return 'small';
+  if (width < 240) return height < 28 ? 'small' : 'compact';
+  if (height < 34) return 'line';
+  return height > 280 ? 'tall' : 'block';
+}
+
+function hide(passage, titles) {
+  const el = passage.closest(UNITS) ?? passage;
+  passage.classList.remove(PENDING);
+  if (opened.has(el) || el.classList.contains(HIDDEN)) return;
+  for (const inner of el.querySelectorAll(`.${PENDING}`)) inner.classList.remove(PENDING);
   el.classList.add(HIDDEN);
-  if (el.querySelector(':scope > .scout-spoiler-label')) return;
+  const size = sizeOf(el);
+  el.dataset.scoutSize = size;
+  const what = titles.join(', ');
+  if (size === 'small') {
+    el.title = `Spoiler: ${what}. Click to show.`;
+    return;
+  }
   const label = document.createElement('span');
   label.className = 'scout-spoiler-label';
   label.setAttribute('role', 'button');
-  label.setAttribute('aria-label', `Spoiler for ${titles.join(', ')}. Click to reveal.`);
-  // An ink capsule over the frosted passage: SPOILER: Severance  Show.
+  label.setAttribute('aria-label', `Spoiler for ${what}. Click to reveal.`);
+  // An ink capsule over the veiled story: SPOILER: Severance  Show.
   const chip = document.createElement('span');
   const kicker = document.createElement('u');
   kicker.textContent = 'Spoiler: ';
-  const what = document.createElement('b');
-  what.textContent = titles.join(', ');
+  const name = document.createElement('b');
+  name.textContent = what;
   const show = document.createElement('i');
   show.textContent = 'Show';
-  chip.append(kicker, what, show);
+  chip.append(kicker, name, show);
   label.append(chip);
-  el.append(label);
+  el.prepend(label);
 }
 
 function onClick(event) {
@@ -86,6 +122,7 @@ function onClick(event) {
   event.stopPropagation();
   reveal(el);
   seen.add(el);
+  opened.add(el);
 }
 
 function scan(root) {
@@ -99,7 +136,7 @@ function scan(root) {
     seen.add(el);
     const text = el.innerText || el.textContent;
     const titles = matcher.find(text);
-    if (!titles.length) continue;
+    if (!titles.length || matcher.mentionOnly(text)) continue;
     if (mode === 'keyword') {
       hide(el, titles);
       continue;

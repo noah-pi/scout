@@ -411,7 +411,8 @@ function renderShields(tab, site, shields, trusted, extensions) {
 
 function renderCalm(tab, shields, rules) {
   const calm = tab.calm ?? {};
-  const parts = [calm.folded && `${calm.folded} folded`, calm.aiFolded && `${calm.aiFolded} AI-labeled`, calm.paused && `${plural(calm.paused, 'video')} paused`].filter(Boolean);
+  const names = Object.fromEntries(rules.calm.map(({ key, label }) => [key, label.replace(/^(Hide|Stop) /, '')]));
+  const parts = [...Object.entries(calm.hidden ?? {}).map(([k, n]) => `${names[k] ?? k} ${n}`), calm.folded && `${calm.folded} folded`, calm.aiFolded && `${calm.aiFolded} AI-labeled`, calm.paused && `${plural(calm.paused, 'video')} paused`].filter(Boolean);
   $('calm-status').hidden = !parts.length;
   $('calm-status').querySelector('.v').textContent = parts.join(' · ');
 

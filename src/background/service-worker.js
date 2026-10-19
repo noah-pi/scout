@@ -527,7 +527,13 @@ const handlers = {
   async calmCount({ counts }, sender) {
     if (!sender.tab) return;
     return updateTab(sender.tab.id, (s) => {
-      s.calm = { folded: Number(counts?.folded) || 0, aiFolded: Number(counts?.aiFolded) || 0, paused: Number(counts?.paused) || 0 };
+      const hidden = Object.fromEntries(
+        Object.entries(counts?.hidden ?? {})
+          .filter(([k, n]) => /^[a-zA-Z][\w-]{0,30}$/.test(k) && Number(n) > 0)
+          .slice(0, 30)
+          .map(([k, n]) => [k, Math.min(Number(n), 9999)]),
+      );
+      s.calm = { folded: Number(counts?.folded) || 0, aiFolded: Number(counts?.aiFolded) || 0, paused: Number(counts?.paused) || 0, hidden };
       return s;
     });
   },
