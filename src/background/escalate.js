@@ -130,7 +130,7 @@ export async function checkSpoilers(items, watchlist, host) {
     const usd = costOf(model, response.usage);
     await addSpend(usd, 'spoilerCalls');
     const shows = [...new Set(todo.flatMap((i) => i.titles))].join(', ');
-    await addReceipt({ service: `claude (${model})`, sent: `${host}: ${todo.length} passages mentioning ${shows}`, reason: 'Spoiler shield', usd });
+    await addReceipt({ service: `claude (${model})`, sent: `${host}: ${todo.length} passage${todo.length === 1 ? '' : 's'} mentioning ${shows}`, reason: 'Spoiler shield', usd });
     fresh = parseSpoilerResults(response, todo.map((i) => i.id));
   } catch {
     fresh = Object.fromEntries(todo.map((i) => [i.id, true]));

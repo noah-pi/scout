@@ -3,6 +3,7 @@
 // Results from known AI-heavy sites fold down to one quiet line; click it
 // to bring the result back.
 import list from '../../data/ai-sites.json';
+import { NOTE_CSS, makeNote } from './note.js';
 
 const domains = new Set(list.domains);
 const patterns = list.patterns.map((p) => {
@@ -59,9 +60,7 @@ function style() {
   css.id = 'scout-slop-style';
   css.textContent = `
     [data-scout-slop] { display: none !important; }
-    .scout-slop-note { all: initial; display: block; margin: 6px 0 14px; cursor: pointer;
-      font: 12px/1.5 ui-sans-serif, system-ui, sans-serif; color: #8a8780; }
-    .scout-slop-note:hover { color: #5a5852; text-decoration: underline; }
+    ${NOTE_CSS}
   `;
   (document.head ?? document.documentElement).append(css);
 }
@@ -79,15 +78,7 @@ function scan() {
     const block = resultFor(a, url.hostname);
     if (block.hasAttribute('data-scout-slop') || block.closest('[data-scout-slop]')) continue;
     block.setAttribute('data-scout-slop', site);
-    const note = document.createElement('button');
-    note.type = 'button';
-    note.className = 'scout-slop-note';
-    note.textContent = `Hidden: ${site} is on Scout's list of AI-heavy sites. Show`;
-    note.addEventListener('click', () => {
-      block.removeAttribute('data-scout-slop');
-      note.remove();
-    });
-    block.before(note);
+    block.before(makeNote('scout-slop-note', `${site} is on Scout’s list of AI-heavy sites`, () => block.removeAttribute('data-scout-slop')));
     hidden++;
   }
   if (hidden) chrome.runtime.sendMessage({ type: 'slopCount', count: hidden }).catch(() => {});

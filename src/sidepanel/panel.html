@@ -7,145 +7,195 @@
   <link rel="stylesheet" href="panel.css">
 </head>
 <body>
-  <header>
+  <header class="bar">
     <h1>Scout</h1>
-    <span id="level" class="level quiet">quiet</span>
+    <nav class="segmented" role="tablist" aria-label="Sections">
+      <button type="button" role="tab" data-tab="page" aria-selected="true">Page</button>
+      <button type="button" role="tab" data-tab="shields">Shields</button>
+      <button type="button" role="tab" data-tab="settings">Settings</button>
+    </nav>
   </header>
-  <nav class="tabs" role="tablist">
-    <button type="button" role="tab" data-tab="page" aria-selected="true">Page</button>
-    <button type="button" role="tab" data-tab="shields">Shields</button>
-    <button type="button" role="tab" data-tab="settings">Settings</button>
-  </nav>
 
+  <!-- PAGE: one verdict, the evidence behind it, and the few things you can do. -->
   <main data-panel="page">
-    <section>
-      <p id="host" class="host"></p>
-      <ul id="notes" class="notes"></ul>
-      <div class="actions">
-        <button id="trust" type="button">Trust this site</button>
-        <button id="investigate" type="button">Investigate</button>
-        <button id="fine-print" type="button">Read the fine print</button>
+    <section class="hero" id="hero" data-level="quiet" aria-live="polite">
+      <div class="glyph" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path id="glyph-path" d="M5 12.5l4.2 4.2L19 7"/></svg>
       </div>
-      <div id="fine-print-result" class="investigation" hidden></div>
-      <div id="investigation" class="investigation" hidden></div>
+      <h2 id="verdict">All clear</h2>
+      <p id="host" class="secondary"></p>
     </section>
 
+    <div class="actions" id="page-actions">
+      <button type="button" class="btn filled" id="investigate">Investigate</button>
+      <button type="button" class="btn tinted" id="fine-print">Fine print</button>
+    </div>
+
+    <ul class="group" id="notes" hidden></ul>
+
+    <div class="card" id="investigation" hidden></div>
+    <div class="card" id="fine-print-result" hidden></div>
+
     <section id="census" hidden>
-      <h2>This thread</h2>
-      <p id="census-summary"></p>
-      <ul id="census-notes" class="notes"></ul>
-      <div class="actions">
-        <button id="census-profiles" type="button">Check accounts</button>
-        <button id="census-analyze" type="button">Analyze pattern</button>
-      </div>
-      <div id="census-analysis" class="investigation" hidden></div>
+      <h3 class="group-title">This thread</h3>
+      <ul class="group">
+        <li class="row"><span id="census-summary"></span></li>
+        <li class="row"><ul id="census-notes" class="plain"></ul></li>
+        <li class="row buttons">
+          <button type="button" class="btn plain" id="census-profiles">Check accounts</button>
+          <button type="button" class="btn plain" id="census-analyze">Analyze pattern</button>
+        </li>
+      </ul>
+      <div class="card" id="census-analysis" hidden></div>
     </section>
 
     <section id="asked" hidden>
-      <h2>You asked</h2>
-      <ul id="asked-list" class="images"></ul>
+      <h3 class="group-title">You asked</h3>
+      <ul class="group" id="asked-list"></ul>
     </section>
 
     <section id="images" hidden>
-      <h2>Images</h2>
-      <ul id="image-list" class="images"></ul>
+      <h3 class="group-title">Images</h3>
+      <ul class="group" id="image-list"></ul>
     </section>
 
     <section>
-      <h2>Blocked here</h2>
-      <ul id="trackers" class="ledger"></ul>
-      <p id="fingerprinting" class="muted"></p>
-      <p id="consent" class="muted"></p>
-      <p id="slop" class="muted"></p>
+      <h3 class="group-title">Quietly handled</h3>
+      <ul class="group">
+        <li>
+          <button type="button" class="row disclosure" id="blocked-toggle" aria-expanded="false" aria-controls="trackers">
+            <span id="blocked-summary">Nothing blocked yet</span><span class="chev" aria-hidden="true"></span>
+          </button>
+          <ul id="trackers" class="sub" hidden></ul>
+        </li>
+        <li class="row secondary" id="consent" hidden></li>
+        <li class="row secondary" id="slop" hidden></li>
+        <li class="row secondary" id="calm-status" hidden></li>
+      </ul>
     </section>
+
+    <div class="footer-actions">
+      <button type="button" class="btn link" id="trust">Trust this site</button>
+    </div>
   </main>
 
+  <!-- SHIELDS: switches, grouped the way you'd think about them. -->
   <main data-panel="shields" hidden>
     <section>
-      <h2>This site</h2>
-      <p id="pause-status" class="muted"></p>
-      <div class="actions"><button id="pause" type="button">Pause blocking here</button></div>
+      <h3 class="group-title">This site</h3>
+      <ul class="group">
+        <li class="row buttons"><span id="pause-status" class="grow"></span><button type="button" class="btn plain" id="pause">Pause</button></li>
+      </ul>
+      <p class="footnote">If a site breaks, pause blocking and cookie handling for it. Scam checks keep running.</p>
     </section>
 
     <section>
-      <h2>Spoiler shield</h2>
-      <p id="spoiler-status" class="muted"></p>
-      <label class="inline"><input type="checkbox" id="spoiler-enabled"> Hide spoilers for the shows below</label>
-      <label class="inline">Mode
-        <select id="spoiler-mode">
-          <option value="ai">Ask the model; reveal clean mentions</option>
-          <option value="keyword">Hide every mention</option>
-        </select>
-      </label>
-      <ul id="spoiler-list" class="ledger"></ul>
-      <form id="spoiler-form" class="settings">
-        <label>Show or film <input name="title" required placeholder="Severance"></label>
-        <label>Watched up to <input name="watched" placeholder="S2E3, or finished"></label>
-        <label>Also catch <input name="aliases" placeholder="Lumon, Mark Scout (comma-separated)"></label>
-        <div class="actions"><button type="submit">Add</button></div>
+      <h3 class="group-title">Calm</h3>
+      <ul class="group" id="calm-toggles"></ul>
+      <ul class="group">
+        <li><label class="row switch"><span><span id="ai-labels-label">Hide AI-labeled posts</span><small id="ai-platforms" class="secondary"></small></span><input type="checkbox" role="switch" id="ai-labels"></label></li>
+        <li><label class="row switch"><span>Fold AI-heavy search results</span><input type="checkbox" role="switch" id="slop-enabled"></label></li>
+      </ul>
+      <p class="footnote" id="rules-status"></p>
+      <div class="footer-actions"><button type="button" class="btn link" id="rules-refresh">Check for rule updates</button></div>
+    </section>
+
+    <section>
+      <h3 class="group-title">Spoilers</h3>
+      <ul class="group">
+        <li><label class="row switch"><span>Spoiler shield<small id="spoiler-status" class="secondary"></small></span><input type="checkbox" role="switch" id="spoiler-enabled"></label></li>
+        <li class="row">
+          <span class="grow">When a show is mentioned</span>
+          <select id="spoiler-mode" aria-label="Spoiler mode">
+            <option value="ai">Ask, then hide</option>
+            <option value="keyword">Always hide</option>
+          </select>
+        </li>
+      </ul>
+      <ul class="group" id="spoiler-list"></ul>
+      <form id="spoiler-form" class="group form">
+        <input name="title" required placeholder="Show or film" aria-label="Show or film">
+        <input name="watched" placeholder="Watched up to, e.g. S2E3" aria-label="Watched up to">
+        <input name="aliases" placeholder="Also catch: names, places" aria-label="Also catch">
+        <button type="submit" class="btn tinted">Add</button>
       </form>
     </section>
 
     <section>
-      <h2>Calm</h2>
-      <p id="calm-status" class="muted"></p>
-      <div id="calm-toggles"></div>
-      <label class="inline"><input type="checkbox" id="ai-labels"> <span id="ai-labels-label">Hide posts the platform labels as AI-generated</span></label>
-      <p id="ai-platforms" class="muted"></p>
-      <label class="inline"><input type="checkbox" id="slop-enabled"> Fold search results from AI-heavy sites</label>
-      <p id="rules-status" class="muted"></p>
-      <div class="actions"><button id="rules-refresh" type="button">Check for rule updates</button></div>
+      <h3 class="group-title">Trusted sites</h3>
+      <ul class="group" id="trusted-list"></ul>
+      <p class="footnote">Trusted sites skip warnings. Trust lapses if a domain is re-registered, or after a year.</p>
     </section>
 
     <section>
-      <h2>Trusted sites</h2>
-      <p class="muted">Sites you trust skip Scout's warnings. Trust lapses if a domain is re-registered, or after a year.</p>
-      <ul id="trusted-list" class="ledger"></ul>
+      <h3 class="group-title">Other extensions</h3>
+      <ul class="group" id="extensions"></ul>
+      <p class="footnote">Extensions that can read every site can see everything Scout protects.</p>
     </section>
 
     <section>
-      <h2>Your other extensions</h2>
-      <p class="muted">Extensions that can read every site or control the browser can see everything Scout protects.</p>
-      <ul id="extensions" class="images"></ul>
-    </section>
-
-    <section>
-      <h2>Chrome</h2>
-      <p id="chrome" class="muted"></p>
-      <div class="actions"><button id="chrome-settings" type="button">Security settings</button></div>
+      <h3 class="group-title">Chrome</h3>
+      <ul class="group">
+        <li class="row buttons"><span id="chrome" class="grow"></span><button type="button" class="btn plain" id="chrome-settings">Open</button></li>
+      </ul>
     </section>
   </main>
 
+  <!-- SETTINGS: models and money, then the record. -->
   <main data-panel="settings" hidden>
     <section>
-      <h2>Models</h2>
-      <p id="spend" class="muted"></p>
-      <p id="nano" class="muted"></p>
-      <div class="actions"><button id="nano-download" type="button" hidden>Download on-device model</button></div>
-      <form id="settings-form" class="settings">
-        <label class="inline"><input type="checkbox" name="cloud"> Cloud checks on login and payment pages with mixed signals</label>
-        <label>Anthropic API key <input type="password" name="apiKey" autocomplete="off" spellcheck="false"></label>
-        <label class="inline"><input type="checkbox" name="keyInSession"> Forget the key when Chrome closes</label>
-        <label>Routine model (page checks, spoilers, fine print) <select name="quickModel"></select></label>
-        <label>Critical-reasoning model (Investigate, thread analysis) <select name="deepModel"></select></label>
-        <label>Daily cap on page checks <input type="number" name="dailyCap" min="0" step="1"></label>
-        <label>Daily cap on spoiler checks <input type="number" name="spoilerCap" min="0" step="1"></label>
-        <div class="actions"><button type="submit">Save</button><span id="saved" class="muted"></span></div>
-      </form>
+      <h3 class="group-title">Today</h3>
+      <ul class="group">
+        <li class="row"><span id="spend" class="grow"></span></li>
+        <li class="row buttons"><span id="nano" class="grow"></span><button type="button" class="btn plain" id="nano-download" hidden>Download</button></li>
+      </ul>
+    </section>
+
+    <form id="settings-form">
+      <section>
+        <h3 class="group-title">Cloud checks</h3>
+        <ul class="group">
+          <li><label class="row switch"><span>Check uncertain logins and payments<small class="secondary">Only when local signals disagree.</small></span><input type="checkbox" role="switch" name="cloud"></label></li>
+          <li class="row field"><input type="password" name="apiKey" enterkeyhint="done" autocomplete="off" spellcheck="false" aria-label="Anthropic API key"></li>
+          <li><label class="row switch"><span>Forget the key when Chrome closes</span><input type="checkbox" role="switch" name="keyInSession"></label></li>
+        </ul>
+      </section>
+
+      <section>
+        <h3 class="group-title">Models</h3>
+        <ul class="group">
+          <li class="row"><span class="grow">Routine</span><select name="quickModel" aria-label="Routine model"></select></li>
+          <li class="row"><span class="grow">Critical reasoning</span><select name="deepModel" aria-label="Critical-reasoning model"></select></li>
+        </ul>
+        <p class="footnote">Routine: page checks, spoilers, fine print. Critical: Investigate and thread analysis.</p>
+      </section>
+
+      <section>
+        <h3 class="group-title">Daily limits</h3>
+        <ul class="group">
+          <li class="row"><span class="grow">Page checks</span><input type="number" name="dailyCap" min="0" step="1" aria-label="Daily page checks"></li>
+          <li class="row"><span class="grow">Spoiler checks</span><input type="number" name="spoilerCap" min="0" step="1" aria-label="Daily spoiler checks"></li>
+        </ul>
+      </section>
+
+      <p class="footnote" id="saved" role="status">Changes save as you make them.</p>
+    </form>
+
+    <section>
+      <h3 class="group-title">Receipts</h3>
+      <ul class="group" id="receipts"></ul>
+      <p class="footnote">Everything that left this browser on Scout's behalf, and what it cost.</p>
     </section>
 
     <section>
-      <h2>Receipts</h2>
-      <p class="muted">Everything that left the browser on Scout's behalf. Dry runs show where a cloud check would have run.</p>
-      <ul id="receipts" class="receipts"></ul>
-    </section>
-
-    <section>
-      <h2>Memory</h2>
-      <div class="actions">
-        <button id="export" type="button">Export</button>
-        <label class="button">Import<input id="import" type="file" accept="application/json" hidden></label>
-      </div>
+      <h3 class="group-title">Memory</h3>
+      <ul class="group">
+        <li class="row buttons">
+          <span class="grow secondary">Trusted sites and dismissed alerts</span>
+          <button type="button" class="btn plain" id="export">Export</button>
+          <label class="btn plain">Import<input id="import" type="file" accept="application/json" hidden></label>
+        </li>
+      </ul>
     </section>
   </main>
 

@@ -67,7 +67,7 @@ npm run update-lists   # every few weeks: fresh EasyPrivacy and Tracker Radar
 
 ## Cloud checks
 
-Off until you turn them on. In the panel, open **Models → Settings**, paste an Anthropic API key, and tick **Cloud checks**.
+Off until you turn them on. In the panel, open **Settings**, paste an Anthropic API key, and turn on **Check uncertain logins and payments**. Settings save as you change them.
 
 - **Models:** Claude Haiku 5.5 for routine work (quick page checks, spoiler context). Claude Opus 5.5 for critical reasoning: Investigate (high effort) and bot-pattern analysis. Both are configurable.
 - **Cost:** a quick check sends about 1,000 tokens and gets back a few hundred, under a tenth of a cent on Haiku 5.5. Investigate on Opus 5.5 costs a cent or more, depending on the page. The panel shows today's count and spend, and each receipt carries its own cost.
@@ -89,6 +89,14 @@ When a site changes its markup and something reappears, edit `data/page-rules.js
 - **The model can add suspicion, never remove it.** Deterministic red flags stand regardless of what a model says, which blunts pages written to talk the model out of a warning.
 - **Cloud calls get extracted fields, never page HTML, cookies or form contents.** Every call gets a receipt.
 - **Defer to Chrome, then cover its gaps.** Where Chrome has a native check (Safe Browsing, its on-device scam detection, the C2PA and SynthID checks announced at I/O 2026), Scout relays Chrome's finding in its field notes. It also runs its own check wherever Chrome's coverage stops: metadata Chrome doesn't read, non-Google watermarks, sites and media types Chrome skips.
+
+## Interface
+
+Scout is meant to be felt rarely and read in a glance when it is.
+
+- **Panel:** one verdict at the top (All clear, Worth a look, Stop and check), the evidence beneath it, and two actions. Everything Scout handled without asking (trackers, ads, cookie banners, folds) sits in one collapsed group. Shields and Settings use grouped lists and switches, follow the system's light or dark mode, and save as you change them. On a stop-level page the trust link reads **Trust anyway**, in red.
+- **On the page:** a fold leaves one small capsule saying what was hidden and why, with **Show**. It is styled to sit on light and dark pages alike and resets page CSS so sites can't restyle it. Spoilers sit under a frosted veil with a **Spoiler: Title · Show** label. Reddit comments with near-identical wording get a small orange tag.
+- **Badge:** nothing on quiet pages, an orange dot for a note, a red `!` for a stop.
 
 ## Known limits
 

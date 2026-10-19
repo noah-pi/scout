@@ -54,10 +54,10 @@ function style() {
   const css = document.createElement('style');
   css.id = 'scout-census-style';
   css.textContent = `
-    [data-scout-similar]::before { content: "Similar wording to " attr(data-scout-similar) " other comments";
-      display: inline-block; margin: 2px 0 4px; padding: 1px 6px; border-radius: 3px;
-      font: 500 11px/1.5 ui-sans-serif, system-ui, sans-serif; letter-spacing: .02em;
-      color: #8a5a00; background: rgba(183, 121, 31, .12); }
+    [data-scout-similar]::before { content: "Similar wording · " attr(data-scout-similar) " others";
+      display: inline-block; margin: 2px 0 6px; padding: 2px 9px; border-radius: 999px;
+      font: 500 11px/1.5 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif;
+      letter-spacing: -.003em; color: #c93400; background: rgba(255, 149, 0, .12); border: .5px solid rgba(255, 149, 0, .3); }
   `;
   (document.head ?? document.documentElement).append(css);
 }

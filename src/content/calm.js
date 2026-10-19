@@ -5,6 +5,7 @@
 // to a one-line note you can click.
 import bundled from '../../data/page-rules.json';
 import { labelMatcher, onSite, validateRules } from '../shared/pagerules.js';
+import { NOTE_CSS as CAPSULE, makeNote } from './note.js';
 
 const host = location.hostname;
 let folded = 0;
@@ -21,24 +22,12 @@ function css(text) {
   (document.head ?? document.documentElement).append(style);
 }
 
-const NOTE_CSS = `
-  [data-scout-calm] { display: none !important; }
-  .scout-calm-note { all: initial; display: block; margin: 6px 0 12px; cursor: pointer;
-    font: 12px/1.5 ui-sans-serif, system-ui, sans-serif; color: #8a8780; }
-  .scout-calm-note:hover { color: #5a5852; text-decoration: underline; }`;
+const NOTE_CSS = `[data-scout-calm] { display: none !important; }${CAPSULE}`;
 
 function fold(block, why, counter) {
   if (!block || block.hasAttribute('data-scout-calm') || block.closest('[data-scout-calm]')) return false;
   block.setAttribute('data-scout-calm', '');
-  const note = document.createElement('button');
-  note.type = 'button';
-  note.className = 'scout-calm-note';
-  note.textContent = `${why} Show`;
-  note.addEventListener('click', () => {
-    block.removeAttribute('data-scout-calm');
-    note.remove();
-  });
-  block.before(note);
+  block.before(makeNote('scout-calm-note', why, () => block.removeAttribute('data-scout-calm')));
   counter();
   return true;
 }
@@ -118,13 +107,13 @@ async function start() {
     let changed = false;
     for (const rule of textRules) {
       for (const el of labelled(root, rule.matches)) {
-        changed = fold(el.closest(rule.container), 'Hidden: Google AI Overview.', () => folded++) || changed;
+        changed = fold(el.closest(rule.container), 'Google AI Overview', () => folded++) || changed;
       }
     }
     if (platform) {
       const [name, p] = platform;
       for (const el of labelled(root, aiMatches)) {
-        changed = fold(el.closest(p.container), `Hidden: ${name} labels this post as made with AI.`, () => aiFolded++) || changed;
+        changed = fold(el.closest(p.container), `${name} labels this post as made with AI`, () => aiFolded++) || changed;
       }
     }
     if (changed) report();

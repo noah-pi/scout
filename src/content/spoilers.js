@@ -25,10 +25,17 @@ function style() {
       color: transparent !important; text-shadow: 0 0 9px rgba(128, 128, 128, .85) !important; cursor: pointer; }
     .${PENDING} :is(img, video, picture, canvas), .${HIDDEN} :is(img, video, picture, canvas) { filter: blur(14px); }
     .${HIDDEN} { position: relative; }
-    .${HIDDEN} > .scout-spoiler-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-      font: 600 12px/1.3 ui-sans-serif, system-ui, sans-serif !important; letter-spacing: .02em; text-align: center;
-      color: #fff !important; text-shadow: none !important; background: rgba(28, 27, 25, .72); border-radius: 4px;
-      z-index: 2147483000; padding: 4px; }
+    .${HIDDEN} > .scout-spoiler-label, .${HIDDEN} > .scout-spoiler-label * { all: initial; }
+    .${HIDDEN} > .scout-spoiler-label { position: absolute; inset: 0; z-index: 2147483000; display: flex;
+      align-items: center; justify-content: center; padding: 6px; cursor: pointer; border-radius: 10px;
+      background: rgba(128, 128, 128, .12); -webkit-backdrop-filter: blur(10px) saturate(1.4); backdrop-filter: blur(10px) saturate(1.4); }
+    .${HIDDEN} > .scout-spoiler-label > span { display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+      padding: 5px 12px; border-radius: 999px; background: rgba(29, 29, 31, .78);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, .16); color: #f5f5f7 !important; text-shadow: none !important;
+      font: 500 12px/1.3 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif;
+      letter-spacing: -.003em; -webkit-font-smoothing: antialiased; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .${HIDDEN} > .scout-spoiler-label b { font: inherit; font-weight: 600; color: #f5f5f7 !important; text-shadow: none !important; }
+    .${HIDDEN} > .scout-spoiler-label i { font: inherit; font-style: normal; font-weight: 600; color: #64d2ff !important; text-shadow: none !important; }
   `;
   (document.head ?? document.documentElement).append(css);
 }
@@ -54,7 +61,16 @@ function hide(el, titles) {
   if (el.querySelector(':scope > .scout-spoiler-label')) return;
   const label = document.createElement('span');
   label.className = 'scout-spoiler-label';
-  label.textContent = `Spoiler: ${titles.join(', ')}. Click to reveal.`;
+  label.setAttribute('role', 'button');
+  label.setAttribute('aria-label', `Spoiler for ${titles.join(', ')}. Click to reveal.`);
+  // Reads "Spoiler: Severance · Show" in a capsule over the frosted passage.
+  const chip = document.createElement('span');
+  const what = document.createElement('b');
+  what.textContent = `Spoiler: ${titles.join(', ')}`;
+  const show = document.createElement('i');
+  show.textContent = 'Show';
+  chip.append(what, document.createTextNode(' · '), show);
+  label.append(chip);
   el.append(label);
 }
 

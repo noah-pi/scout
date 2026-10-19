@@ -2,6 +2,8 @@ import { MODELS } from '../shared/assessment.js';
 
 const $ = (id) => document.getElementById(id);
 const dollars = (usd) => (usd > 0 && usd < 0.0001 ? '<$0.0001' : `$${usd.toFixed(usd < 0.01 ? 4 : 2)}`);
+const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+const time = (at) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 const ask = async (message) => {
   const res = await chrome.runtime.sendMessage(message);
@@ -11,17 +13,54 @@ const ask = async (message) => {
 
 const activeTabId = async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
 
-function item(...children) {
-  const li = document.createElement('li');
-  li.append(...children);
-  return li;
+function el(tag, className = '', text = '') {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
 }
+const li = (className, ...children) => {
+  const node = el('li', className);
+  node.append(...children);
+  return node;
+};
+const linkButton = (text, onclick, extra = '') => Object.assign(el('button', `btn link ${extra}`.trim(), text), { type: 'button', onclick });
+const empty = (text) => li('row empty', text);
 
-function span(text, className) {
-  const el = document.createElement('span');
-  el.textContent = text;
-  if (className) el.className = className;
-  return el;
+// Tones from the worker, mapped onto the panel's three colors.
+const TONE = { bad: 'bad', tampered: 'bad', mixed: 'mixed', ai: 'mixed', ok: 'good', captured: 'good', credentials: 'good' };
+
+const LEVEL = {
+  quiet: { verdict: 'All clear', glyph: 'M5 12.5l4.2 4.2L19 7' },
+  note: { verdict: 'Worth a look', glyph: 'M12 7v6 M12 16.5v.5' },
+  stop: { verdict: 'Stop and check', glyph: 'M12 7v6 M12 16.5v.5' },
+  trusted: { verdict: 'Trusted site', glyph: 'M5 12.5l4.2 4.2L19 7' },
+  idle: { verdict: 'Nothing to check', glyph: 'M7 12h10' },
+};
+
+const VERDICTS = { likely_scam: 'Likely a scam', unclear: "Can't tell", likely_safe: 'Nothing wrong found' };
+const VERDICT_TONE = { likely_scam: 'bad', unclear: 'mixed', likely_safe: 'good' };
+const COORDINATION = { none: 'No sign of coordination', weak: 'Weak signs of coordination', moderate: 'Moderate signs of coordination', strong: 'Strong signs of coordination' };
+const COORDINATION_TONE = { none: 'good', weak: '', moderate: 'mixed', strong: 'bad' };
+const NANO = {
+  available: 'Gemini Nano is ready on this device',
+  downloadable: 'Gemini Nano can run on this device',
+  downloading: 'Gemini Nano is downloading',
+  unavailable: "Gemini Nano isn't available here",
+  unsupported: "This Chrome doesn't offer Gemini Nano",
+};
+
+function card(box, { lead, tone = '', body = [], list = [], meta }) {
+  const parts = [el('p', `lead ${tone}`.trim(), lead)];
+  for (const line of body.filter(Boolean)) parts.push(el('p', '', line));
+  if (list.length) {
+    const ul = el('ul');
+    ul.append(...list.map((t) => el('li', '', t)));
+    parts.push(ul);
+  }
+  if (meta) parts.push(el('p', 'meta', meta));
+  box.replaceChildren(...parts);
+  box.hidden = false;
 }
 
 async function render() {
@@ -29,87 +68,190 @@ async function render() {
   if (tabId === undefined) return;
   const { tab, blocked, receipts, chrome: protection, settings, spend, nano, shields, site, trusted, extensions, pageRules } = await ask({ type: 'panelState', tabId });
 
-  $('level').textContent = tab.trusted ? 'trusted' : tab.level;
-  $('level').className = `level ${tab.trusted ? 'quiet' : tab.level}`;
-  $('host').textContent = tab.host || 'No page';
-  $('trust').textContent = tab.trusted ? 'Stop trusting' : 'Trust this site';
+  const level = !tab.host ? 'idle' : tab.trusted ? 'trusted' : tab.level;
+  $('hero').dataset.level = level;
+  $('verdict').textContent = LEVEL[level].verdict;
+  $('glyph-path').setAttribute('d', LEVEL[level].glyph);
+  $('host').textContent = tab.host || 'Open a page to check it';
+  $('page-actions').hidden = !tab.host;
   $('trust').hidden = !tab.host;
+  $('trust').textContent = tab.trusted ? 'Stop trusting this site' : level === 'stop' ? 'Trust anyway' : 'Trust this site';
+  $('trust').classList.toggle('danger', level === 'stop');
 
+  const flags = tab.trusted ? [] : tab.flags;
+  $('notes').hidden = !flags.length;
   $('notes').replaceChildren(
-    ...(tab.trusted ? [] : tab.flags).map((flag) => {
-      const li = item(span(flag.text));
-      li.className = flag.severity;
-      if (flag.severity === 'soft') {
-        const dismiss = document.createElement('button');
-        dismiss.className = 'link';
-        dismiss.textContent = 'not useful';
-        dismiss.onclick = () => ask({ type: 'dismiss', tabId, kind: flag.kind }).then(render);
-        li.append(dismiss);
-      }
-      return li;
+    ...flags.map((flag) => {
+      const row = li(`row finding ${flag.severity}`, el('span', 'dot'), el('span', 'grow', flag.text));
+      if (flag.severity === 'soft') row.append(linkButton('Not useful', () => ask({ type: 'dismiss', tabId, kind: flag.kind }).then(render)));
+      return row;
     }),
   );
 
-  const byCompany = {};
-  for (const t of Object.values(tab.trackers)) byCompany[t.company] = (byCompany[t.company] ?? 0) + t.blocked;
-  const companies = Object.entries(byCompany).sort((a, b) => b[1] - a[1]);
-  const attributed = companies.reduce((n, [, count]) => n + count, 0);
-  if (blocked > attributed) companies.push(['Blocked before Scout could name them', blocked - attributed]);
-  if (tab.ads) companies.push(['Ads', tab.ads]);
-  $('trackers').replaceChildren(
-    ...(companies.length ? companies.map(([c, n]) => item(span(c), span(String(n)))) : [item(span('None on this page', 'muted'))]),
-  );
-  $('fingerprinting').textContent = tab.fingerprinting.length ? `Fingerprinting seen: ${tab.fingerprinting.join(', ')}` : '';
-  $('consent').textContent = !tab.consent
-    ? ''
-    : tab.consent.failed
-      ? `Found a ${tab.consent.cmp} cookie banner but couldn't reject it.`
-      : tab.consent.cosmetic
-        ? `Hid a ${tab.consent.cmp} cookie banner.`
-        : `Rejected cookies on a ${tab.consent.cmp} banner.`;
-
-  $('chrome').textContent =
-    protection.safeBrowsing === false
-      ? 'Safe Browsing is off. Chrome is not checking pages against its list of known scams.'
-      : protection.safeBrowsing
-        ? 'Safe Browsing is on. Extensions can\'t see whether it\'s Enhanced protection, which adds on-device scam detection; check the setting.'
-        : 'Safe Browsing status unavailable.';
-
-  $('investigate').hidden = !tab.host;
-  const inv = tab.investigation;
-  $('investigation').hidden = !inv;
-  if (inv) {
-    const lines = inv.declined
-      ? [`Claude couldn't assess this page (${inv.declined}).`]
-      : [`${VERDICTS[inv.verdict] ?? inv.verdict}.`, inv.summary, ...(inv.reasons ?? [])];
-    $('investigation').replaceChildren(...lines.filter(Boolean).map((l) => Object.assign(document.createElement('p'), { textContent: l })),
-      Object.assign(document.createElement('p'), { className: 'muted', textContent: `${inv.model} · ${new Date(inv.at).toLocaleTimeString()}` }));
-  }
-
-  $('spend').textContent = settings.cloud
-    ? `Today: ${spend.calls} of ${settings.dailyCap} page checks, ${spend.spoilerCalls ?? 0} spoiler checks, ${dollars(spend.usd)}.`
-    : `Cloud checks are off${settings.hasKey ? '' : ' (no API key)'}. Investigate still works once a key is saved.`;
-  $('nano').textContent = NANO[nano] ?? `On-device model: ${nano}.`;
-  $('nano-download').hidden = nano !== 'downloadable';
-  fillSettings(settings);
+  renderBlocked(tab, blocked);
+  renderInvestigation(tab.investigation);
+  renderFinePrint(tab.finePrint);
   renderCensus(tab.census);
   renderImages(tab.images ?? []);
   renderAsked(tab.asked ?? []);
-  renderFinePrint(tab.finePrint);
-  $('fine-print').hidden = !tab.host;
   renderSpoilers(tab.spoilersHidden ?? 0);
   renderShields(tab, site, shields, trusted, extensions);
   renderCalm(tab, shields, pageRules);
 
+  $('chrome').textContent =
+    protection.safeBrowsing === false
+      ? 'Safe Browsing is off. Chrome isn’t checking pages against its list of known scams.'
+      : protection.safeBrowsing
+        ? 'Safe Browsing is on. Enhanced protection adds on-device scam detection; extensions can’t see which you have.'
+        : 'Safe Browsing status is unavailable.';
+
+  $('spend').textContent = settings.cloud
+    ? `${spend.calls} of ${settings.dailyCap} page checks · ${plural(spend.spoilerCalls ?? 0, 'spoiler check')} · ${dollars(spend.usd)}`
+    : settings.hasKey
+      ? `Cloud checks are off · ${dollars(spend.usd)} today`
+      : 'Cloud checks are off. Add a key to use Investigate.';
+  $('nano').textContent = NANO[nano] ?? `Gemini Nano: ${nano}`;
+  $('nano-download').hidden = nano !== 'downloadable';
+  fillSettings(settings);
+
   $('receipts').replaceChildren(
-    ...receipts.map((r) =>
-      item(
-        span(`${r.dryRun ? 'dry run · ' : ''}${r.service}: ${r.sent}${r.usd ? ` · ${dollars(r.usd)}` : ''}`, r.dryRun ? 'dry' : ''),
-        span(new Date(r.at).toLocaleTimeString()),
-      ),
-    ),
+    ...(receipts.length
+      ? receipts.map((r) => {
+          const row = li(`row receipt${r.dryRun ? ' dry' : ''}`, el('span', 'what', r.service), el('span', 'when', time(r.at)), el('span', 'sent', r.sent));
+          if (r.usd) row.querySelector('.when').textContent += ` · ${dollars(r.usd)}`;
+          return row;
+        })
+      : [empty('Nothing has left this browser yet.')]),
   );
 }
+
+function renderBlocked(tab, blocked) {
+  const byCompany = {};
+  for (const t of Object.values(tab.trackers)) byCompany[t.company] = (byCompany[t.company] ?? 0) + t.blocked;
+  const companies = Object.entries(byCompany).sort((a, b) => b[1] - a[1]);
+  const attributed = companies.reduce((n, [, count]) => n + count, 0);
+  const unnamed = Math.max(0, blocked - attributed);
+  const rows = [...companies];
+  if (unnamed) rows.push(['Before Scout could name them', unnamed]);
+  if (tab.ads) rows.push(['Ads', tab.ads]);
+
+  const trackers = attributed + unnamed;
+  const parts = [trackers && `${plural(trackers, 'tracker')}${companies.length ? ` from ${plural(companies.length, 'company', 'companies')}` : ''}`, tab.ads && plural(tab.ads, 'ad')].filter(Boolean);
+  $('blocked-summary').textContent = parts.length ? `Blocked ${parts.join(' · ')}` : 'Nothing blocked on this page';
+  const toggle = $('blocked-toggle');
+  toggle.disabled = !rows.length;
+  toggle.querySelector('.chev').hidden = !rows.length;
+  if (!rows.length) {
+    toggle.setAttribute('aria-expanded', 'false');
+    $('trackers').hidden = true;
+  }
+  $('trackers').replaceChildren(...rows.map(([name, n]) => li('', el('span', '', name), el('span', 'count', String(n)))));
+
+  $('consent').hidden = !tab.consent;
+  if (tab.consent)
+    $('consent').textContent = tab.consent.failed
+      ? `Found a ${tab.consent.cmp} cookie banner but couldn’t reject it`
+      : tab.consent.cosmetic
+        ? `Hid a ${tab.consent.cmp} cookie banner`
+        : `Rejected cookies on a ${tab.consent.cmp} banner`;
+  $('slop').hidden = !tab.slopHidden;
+  $('slop').textContent = `Folded ${plural(tab.slopHidden ?? 0, 'result')} from AI-heavy sites`;
+}
+
+$('blocked-toggle').onclick = () => {
+  const toggle = $('blocked-toggle');
+  const open = toggle.getAttribute('aria-expanded') !== 'true';
+  toggle.setAttribute('aria-expanded', String(open));
+  $('trackers').hidden = !open;
+};
+
+function renderInvestigation(inv) {
+  const box = $('investigation');
+  if (!inv) return (box.hidden = true);
+  if (inv.declined) return card(box, { lead: 'Claude couldn’t assess this page', body: [inv.declined], meta: `${inv.model} · ${time(inv.at)}` });
+  card(box, { lead: VERDICTS[inv.verdict] ?? inv.verdict, tone: VERDICT_TONE[inv.verdict], body: [inv.summary], list: inv.reasons ?? [], meta: `${inv.model} · ${time(inv.at)}` });
+}
+
+function renderFinePrint(fp) {
+  const box = $('fine-print-result');
+  if (!fp) return (box.hidden = true);
+  if (fp.declined) return card(box, { lead: 'Couldn’t read these terms', body: [fp.declined] });
+  const list = el('ul', 'fine-list');
+  for (const point of fp.points) {
+    const text = el('div', 'grow');
+    const quote = el('blockquote', point.verified ? '' : 'unverified', `“${point.quote}”`);
+    if (!point.verified) quote.title = 'Not found word for word in the text. Treat with caution.';
+    text.append(el('p', '', point.text), quote);
+    list.append(li(`fine-point ${{ bad: 'bad', good: 'good' }[point.verdict] ?? ''}`, el('span', 'dot'), text));
+  }
+  card(box, { lead: 'Fine print', body: [fp.summary], meta: `${fp.model} · ${fp.sources.map((s) => new URL(s).pathname).join(', ')}` });
+  box.lastChild.before(list);
+}
+
+function renderCensus(census) {
+  $('census').hidden = !census;
+  if (!census) return;
+  const verdict = { none: 'Nothing unusual across accounts', some: 'Some patterns across accounts', notable: 'Several patterns line up' }[census.level];
+  const summary = $('census-summary');
+  summary.replaceChildren(el('strong', '', verdict), el('small', 'secondary', `${plural(census.comments, 'comment')} · ${plural(census.authors, 'account')}${census.checked ? ` · ${census.checked} checked` : ''}`));
+  $('census-notes').closest('li').hidden = !census.notes.length;
+  $('census-notes').replaceChildren(...census.notes.map((n) => el('li', '', n)));
+  const a = census.analysis;
+  const box = $('census-analysis');
+  if (!a) box.hidden = true;
+  else if (a.declined) card(box, { lead: 'Couldn’t assess this thread', body: [a.declined], meta: `${a.model} · ${time(a.at)}` });
+  else card(box, { lead: COORDINATION[a.coordination], tone: COORDINATION_TONE[a.coordination], body: [a.summary], list: a.patterns, meta: `${a.model} · ${time(a.at)}` });
+}
+
+function result(item, subject) {
+  const row = li('row result', el('p', `headline ${TONE[item.tone] ?? ''}`.trim(), item.headline), ...item.lines.map((l) => el('p', '', l)));
+  if (subject) row.append(el('p', 'where', subject));
+  return row;
+}
+
+function renderImages(images) {
+  $('images').hidden = !images.length;
+  $('image-list').replaceChildren(
+    ...images.map((img) => {
+      let where = img.url;
+      try {
+        const u = new URL(img.url);
+        where = `${u.hostname} · ${u.pathname.split('/').pop().slice(0, 40)}`;
+      } catch {}
+      return result(img, where);
+    }),
+  );
+}
+
+function renderAsked(asked) {
+  $('asked').hidden = !asked.length;
+  $('asked-list').replaceChildren(...asked.map((a) => result(a, a.kind === 'link' ? a.subject : `“${a.subject}”`)));
+}
+
+// Runs a button's work with a spinner in place of its label; errors land in
+// the named box so nothing fails silently.
+async function busy(button, work, errorBox) {
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  try {
+    await work();
+  } catch (error) {
+    const box = $(errorBox);
+    if (box.classList.contains('card')) card(box, { lead: 'Something went wrong', body: [error.message] });
+    else box.textContent = error.message;
+    box.hidden = false;
+  } finally {
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    render();
+  }
+}
+
+$('investigate').onclick = (e) => busy(e.currentTarget, async () => ask({ type: 'investigate', tabId: await activeTabId() }), 'investigation');
+$('fine-print').onclick = (e) => busy(e.currentTarget, async () => ask({ type: 'finePrint', tabId: await activeTabId() }), 'fine-print-result');
+$('census-profiles').onclick = (e) => busy(e.currentTarget, async () => ask({ type: 'censusProfiles', tabId: await activeTabId() }), 'census-analysis');
+$('census-analyze').onclick = (e) => busy(e.currentTarget, async () => ask({ type: 'censusAnalyze', tabId: await activeTabId() }), 'census-analysis');
+$('rules-refresh').onclick = (e) => busy(e.currentTarget, () => ask({ type: 'refreshPageRules' }), 'rules-status');
 
 $('trust').onclick = async () => {
   const tabId = await activeTabId();
@@ -118,34 +260,27 @@ $('trust').onclick = async () => {
   render();
 };
 
-const VERDICTS = { likely_scam: 'Likely a scam', unclear: "Can't tell", likely_safe: 'Nothing wrong found' };
-const NANO = {
-  available: 'On-device model (Gemini Nano) is ready; it runs before any cloud check.',
-  downloadable: 'On-device model (Gemini Nano) can be downloaded.',
-  downloading: 'On-device model is downloading.',
-  unavailable: "On-device model isn't available on this device.",
-  unsupported: "This Chrome doesn't offer an on-device model.",
-};
-
+// Settings: filled once, so a refresh never clobbers what you're typing.
 let settingsFilled = false;
 function fillSettings(settings) {
-  if (settingsFilled) return; // don't clobber what you're typing on each refresh
+  if (settingsFilled) return;
   settingsFilled = true;
   const form = $('settings-form');
   for (const name of ['quickModel', 'deepModel']) {
-    form[name].replaceChildren(...MODELS.map((m) => Object.assign(document.createElement('option'), { value: m, textContent: m })));
+    form[name].replaceChildren(...MODELS.map((m) => Object.assign(el('option', '', m), { value: m })));
     form[name].value = settings[name];
   }
   form.cloud.checked = settings.cloud;
   form.keyInSession.checked = settings.keyInSession;
   form.dailyCap.value = settings.dailyCap;
   form.spoilerCap.value = settings.spoilerCap;
-  form.apiKey.placeholder = settings.hasKey ? 'saved (enter a new key to replace it)' : 'sk-ant-…';
+  form.apiKey.placeholder = settings.hasKey ? 'API key saved · paste a new one to replace it' : 'Anthropic API key';
 }
 
-$('settings-form').onsubmit = async (event) => {
-  event.preventDefault();
-  const form = event.target;
+// Settings save as they change, the way system settings do. The key saves
+// when you leave the field or press Return, and is never shown again.
+let savedTimer;
+async function saveSettings(form) {
   const changes = {
     cloud: form.cloud.checked,
     keyInSession: form.keyInSession.checked,
@@ -158,35 +293,30 @@ $('settings-form').onsubmit = async (event) => {
   await ask({ type: 'saveSettings', changes });
   form.apiKey.value = '';
   settingsFilled = false;
-  $('saved').textContent = 'Saved.';
+  $('saved').textContent = changes.apiKey ? 'Key saved.' : 'Saved.';
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => ($('saved').textContent = 'Changes save as you make them.'), 2000);
   render();
-};
-
-$('investigate').onclick = async () => {
-  const button = $('investigate');
-  button.disabled = true;
-  button.textContent = 'Investigating…';
-  try {
-    await ask({ type: 'investigate', tabId: await activeTabId() });
-  } catch (error) {
-    $('investigation').hidden = false;
-    $('investigation').textContent = error.message;
-  } finally {
-    button.disabled = false;
-    button.textContent = 'Investigate';
-    render();
-  }
+}
+$('settings-form').onchange = (event) => saveSettings(event.currentTarget);
+$('settings-form').onsubmit = (event) => {
+  event.preventDefault();
+  saveSettings(event.currentTarget);
 };
 
 // Downloading Gemini Nano needs a click, so it starts here, not in the worker.
-$('nano-download').onclick = async () => {
+$('nano-download').onclick = async (e) => {
+  const button = e.currentTarget;
+  button.setAttribute('aria-busy', 'true');
   try {
     const session = await LanguageModel.create({
-      monitor: (m) => m.addEventListener('downloadprogress', (e) => ($('nano').textContent = `Downloading on-device model: ${Math.round(e.loaded * 100)}%`)),
+      monitor: (m) => m.addEventListener('downloadprogress', (ev) => ($('nano').textContent = `Downloading Gemini Nano · ${Math.round(ev.loaded * 100)}%`)),
     });
     session.destroy();
   } catch (error) {
     $('nano').textContent = `Download failed: ${error.message}`;
+  } finally {
+    button.removeAttribute('aria-busy');
   }
 };
 
@@ -202,21 +332,17 @@ async function saveSpoilers(next) {
 function renderSpoilers(hiddenHere = null) {
   $('spoiler-enabled').checked = spoilers.enabled;
   $('spoiler-mode').value = spoilers.mode;
+  $('spoiler-list').hidden = !spoilers.entries.length;
   $('spoiler-list').replaceChildren(
     ...spoilers.entries.map((entry, i) => {
-      const remove = Object.assign(document.createElement('button'), { className: 'link', type: 'button', textContent: 'remove' });
-      remove.onclick = () => saveSpoilers({ ...spoilers, entries: spoilers.entries.filter((_, j) => j !== i) });
-      const detail = [entry.watched && `watched ${entry.watched}`, entry.aliases.length && `also ${entry.aliases.join(', ')}`].filter(Boolean).join(' · ');
-      return item(span(detail ? `${entry.title} (${detail})` : entry.title), remove);
+      const detail = [entry.watched && `Watched ${entry.watched}`, entry.aliases.length && `Also ${entry.aliases.join(', ')}`].filter(Boolean).join(' · ');
+      const text = el('span', 'grow', entry.title);
+      if (detail) text.append(el('small', 'secondary', detail));
+      return li('row', text, linkButton('Remove', () => saveSpoilers({ ...spoilers, entries: spoilers.entries.filter((_, j) => j !== i) }), 'danger'));
     }),
   );
-  if (hiddenHere !== null) {
-    $('spoiler-status').textContent = !spoilers.enabled
-      ? 'Off.'
-      : hiddenHere
-        ? `${hiddenHere} passage${hiddenHere === 1 ? '' : 's'} hidden on this page.`
-        : 'Nothing hidden on this page.';
-  }
+  if (hiddenHere !== null)
+    $('spoiler-status').textContent = !spoilers.enabled ? '' : hiddenHere ? `${plural(hiddenHere, 'passage')} hidden on this page` : 'Nothing hidden on this page';
 }
 
 $('spoiler-enabled').onchange = (e) => saveSpoilers({ ...spoilers, enabled: e.target.checked });
@@ -226,186 +352,75 @@ $('spoiler-form').onsubmit = async (event) => {
   const f = event.target;
   await saveSpoilers({ ...spoilers, enabled: true, entries: [...spoilers.entries, { title: f.title.value, watched: f.watched.value, aliases: f.aliases.value }] });
   f.reset();
+  f.title.focus();
 };
 ask({ type: 'getSpoilers' }).then((s) => {
   spoilers = s;
   renderSpoilers();
 });
 
-const p = (textContent, className = '') => Object.assign(document.createElement('p'), { textContent, className });
-
-function renderAsked(asked) {
-  $('asked').hidden = !asked.length;
-  $('asked-list').replaceChildren(
-    ...asked.map((a) => {
-      const li = document.createElement('li');
-      li.append(p(a.headline, `headline ${a.tone}`), ...a.lines.map((l) => p(l, 'muted')), p(a.kind === 'link' ? a.subject : `“${a.subject}”`, 'muted'));
-      return li;
-    }),
-  );
-}
-
-function renderFinePrint(fp) {
-  const box = $('fine-print-result');
-  box.hidden = !fp;
-  if (!fp) return;
-  if (fp.declined) return box.replaceChildren(p(`The model couldn't read these terms (${fp.declined}).`));
-  const list = document.createElement('ul');
-  list.className = 'fine';
-  for (const point of fp.points) {
-    const li = document.createElement('li');
-    li.append(p(point.text, point.verdict));
-    const q = document.createElement('blockquote');
-    q.textContent = point.verified ? `“${point.quote}”` : `“${point.quote}” (not found in the text; treat with caution)`;
-    li.append(q);
-    list.append(li);
-  }
-  box.replaceChildren(p(fp.summary), list, p(`${fp.model} · from ${fp.sources.map((s) => new URL(s).pathname).join(', ')}`, 'muted'));
-}
-
-$('fine-print').onclick = (e) => busy(e.target, 'Reading…', async () => ask({ type: 'finePrint', tabId: await activeTabId() }), 'fine-print-result');
-
-function renderImages(images) {
-  $('images').hidden = !images.length;
-  $('image-list').replaceChildren(
-    ...images.map((img) => {
-      const li = document.createElement('li');
-      let where = img.url;
-      try {
-        const u = new URL(img.url);
-        where = u.hostname + u.pathname.split('/').slice(-1)[0].slice(0, 40);
-      } catch {}
-      li.append(
-        Object.assign(document.createElement('p'), { className: `headline ${img.tone}`, textContent: img.headline }),
-        ...img.lines.map((l) => Object.assign(document.createElement('p'), { className: 'muted', textContent: l })),
-        Object.assign(document.createElement('p'), { className: 'muted', textContent: where }),
-      );
-      return li;
-    }),
-  );
-}
-
-const COORDINATION = { none: 'No sign of coordination', weak: 'Weak signs of coordination', moderate: 'Moderate signs of coordination', strong: 'Strong signs of coordination' };
-
-function renderCensus(census) {
-  $('census').hidden = !census;
-  if (!census) return;
-  const verdict = { none: 'Nothing unusual across accounts.', some: 'Some patterns across accounts.', notable: 'Several patterns line up across accounts.' }[census.level];
-  $('census-summary').textContent = `${verdict} ${census.comments} comments from ${census.authors} accounts${census.checked ? `, ${census.checked} checked` : ''}.`;
-  $('census-notes').replaceChildren(...census.notes.map((n) => item(span(n))));
-  const a = census.analysis;
-  $('census-analysis').hidden = !a;
-  if (a) {
-    const lines = a.declined ? [`The model couldn't assess this thread (${a.declined}).`] : [`${COORDINATION[a.coordination]}.`, a.summary, ...a.patterns];
-    $('census-analysis').replaceChildren(...lines.filter(Boolean).map((l) => Object.assign(document.createElement('p'), { textContent: l })),
-      Object.assign(document.createElement('p'), { className: 'muted', textContent: `${a.model} · ${new Date(a.at).toLocaleTimeString()}` }));
-  }
-}
-
-async function busy(button, label, work, errorBox = 'census-analysis') {
-  const original = button.textContent;
-  button.disabled = true;
-  button.textContent = label;
-  try {
-    await work();
-  } catch (error) {
-    $(errorBox).hidden = false;
-    $(errorBox).textContent = error.message;
-  } finally {
-    button.disabled = false;
-    button.textContent = original;
-    render();
-  }
-}
-
-$('census-profiles').onclick = (e) => busy(e.target, 'Checking…', async () => ask({ type: 'censusProfiles', tabId: await activeTabId() }));
-$('census-analyze').onclick = (e) => busy(e.target, 'Analyzing…', async () => ask({ type: 'censusAnalyze', tabId: await activeTabId() }));
-
-$('chrome-settings').onclick = () => ask({ type: 'openChromeSecurity' });
-
-// Tabs. The choice is a per-viewer convenience, so localStorage is fine;
-// it may be unavailable, and the panel works without it.
-function showTab(name) {
-  for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
-  for (const m of document.querySelectorAll('main[data-panel]')) m.hidden = m.dataset.panel !== name;
-  try {
-    localStorage.setItem('scout-tab', name);
-  } catch {}
-}
-for (const b of document.querySelectorAll('.tabs button')) b.onclick = () => showTab(b.dataset.tab);
-try {
-  showTab(localStorage.getItem('scout-tab') || 'page');
-} catch {
-  showTab('page');
-}
-
 function renderShields(tab, site, shields, trusted, extensions) {
   $('slop-enabled').checked = shields.slop;
-  $('slop').textContent = tab.slopHidden ? `Folded ${tab.slopHidden} result${tab.slopHidden === 1 ? '' : 's'} from AI-heavy sites.` : '';
 
   const paused = Boolean(site && shields.paused.includes(site));
   $('pause').hidden = !tab.host;
-  $('pause').textContent = paused ? 'Resume blocking here' : 'Pause blocking here';
-  $('pause-status').textContent = !tab.host
-    ? 'No site on this tab.'
-    : paused
-      ? `Blocking and cookie-banner rejection are paused on ${site}. Scam checks still run.`
-      : 'If a site breaks, pause ad, tracker and cookie-banner blocking for it. Scam checks keep running.';
+  $('pause').textContent = paused ? 'Resume' : 'Pause';
+  $('pause').classList.toggle('danger', !paused);
+  $('pause-status').textContent = !tab.host ? 'No site on this tab' : paused ? `Paused on ${site}` : `Blocking on ${site ?? tab.host}`;
 
   $('trusted-list').replaceChildren(
     ...(trusted.length
-      ? trusted.map((t) => {
-          const remove = Object.assign(document.createElement('button'), { className: 'link', type: 'button', textContent: 'remove' });
-          remove.onclick = () => ask({ type: 'untrustDomain', domain: t.domain }).then(render);
-          return item(span(t.domain), remove);
-        })
-      : [item(span('None yet.', 'muted'))]),
+      ? trusted.map((t) => li('row', el('span', 'grow', t.domain), linkButton('Remove', () => ask({ type: 'untrustDomain', domain: t.domain }).then(render), 'danger')))
+      : [empty('None yet')]),
   );
 
   $('extensions').replaceChildren(
     ...(extensions.length
       ? extensions.map((e) => {
-          const li = document.createElement('li');
-          li.append(p(e.name, `headline ${e.risk >= 3 ? 'bad' : e.risk >= 2 ? 'mixed' : ''}`), p(e.reasons.join('; ') + '.', 'muted ext-why'));
-          return li;
+          const text = el('span', 'grow', e.name);
+          text.append(el('small', 'secondary', `${e.reasons.join('; ')}.`));
+          return li('row finding', Object.assign(el('span', 'dot'), { style: `background: var(${e.risk >= 3 ? '--red' : e.risk >= 2 ? '--orange' : '--tertiary'})` }), text);
         })
-      : [item(span('None with broad access.', 'muted'))]),
+      : [empty('None with broad access')]),
   );
 }
 
 function renderCalm(tab, shields, rules) {
   const calm = tab.calm ?? {};
-  const parts = [calm.folded && `${calm.folded} folded`, calm.aiFolded && `${calm.aiFolded} AI-labeled post${calm.aiFolded === 1 ? '' : 's'} hidden`, calm.paused && `${calm.paused} autoplaying video${calm.paused === 1 ? '' : 's'} paused`].filter(Boolean);
-  $('calm-status').textContent = parts.length ? `On this page: ${parts.join(', ')}.` : '';
+  const parts = [calm.folded && `folded ${calm.folded}`, calm.aiFolded && `hid ${plural(calm.aiFolded, 'AI-labeled post')}`, calm.paused && `paused ${plural(calm.paused, 'video')}`].filter(Boolean);
+  $('calm-status').hidden = !parts.length;
+  $('calm-status').textContent = parts.length ? `Calm ${parts.join(', ')}` : '';
+
   $('calm-toggles').replaceChildren(
     ...rules.calm.map(({ key, label }) => {
-      const box = Object.assign(document.createElement('input'), { type: 'checkbox', checked: shields.calm?.[key] !== false });
+      const box = Object.assign(el('input'), { type: 'checkbox', checked: shields.calm?.[key] !== false });
+      box.setAttribute('role', 'switch');
       box.onchange = () => ask({ type: 'saveShields', changes: { calm: { ...shields.calm, [key]: box.checked } } }).then(render);
-      const l = document.createElement('label');
-      l.className = 'inline';
-      l.append(box, document.createTextNode(` ${label}`));
-      return l;
+      const row = el('label', 'row switch');
+      row.append(el('span', '', label), box);
+      return li('', row);
     }),
   );
   $('ai-labels').checked = shields.aiLabels !== false;
-  $('ai-platforms').textContent = `Uses each platform's own label on ${rules.platforms.join(', ')}.`;
+  $('ai-platforms').textContent = `By each platform’s own label: ${rules.platforms.join(', ')}`;
   const when = rules.fetchedAt ? new Date(rules.fetchedAt).toLocaleDateString() : 'never';
-  $('rules-status').textContent = `Page rules dated ${rules.updated ?? 'unknown'}; last checked ${when}${rules.error ? ` (last check failed: ${rules.error})` : ''}. They update daily from the Scout repo and can only hide things.`;
+  $('rules-status').textContent = rules.error
+    ? `Rules from ${rules.updated ?? 'unknown'}. The last update check failed: ${rules.error}`
+    : `Rules from ${rules.updated ?? 'unknown'}, checked ${when}. They update daily and can only hide things.`;
 }
 
 $('ai-labels').onchange = (e) => ask({ type: 'saveShields', changes: { aiLabels: e.target.checked } }).then(render);
-$('rules-refresh').onclick = (e) => busy(e.target, 'Checking…', () => ask({ type: 'refreshPageRules' }), 'rules-status');
-
 $('slop-enabled').onchange = (e) => ask({ type: 'saveShields', changes: { slop: e.target.checked } }).then(render);
 $('pause').onclick = async () => {
   await ask({ type: 'togglePause', tabId: await activeTabId() });
   render();
 };
+$('chrome-settings').onclick = () => ask({ type: 'openChromeSecurity' });
 
 $('export').onclick = async () => {
   const data = await ask({ type: 'exportMemory' });
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-  const a = Object.assign(document.createElement('a'), { href: url, download: `scout-memory-${data.exportedAt.slice(0, 10)}.json` });
+  const a = Object.assign(el('a'), { href: url, download: `scout-memory-${data.exportedAt.slice(0, 10)}.json` });
   a.click();
   URL.revokeObjectURL(url);
 };
@@ -416,6 +431,35 @@ $('import').onchange = async (event) => {
   await ask({ type: 'importMemory', file: JSON.parse(await file.text()) });
   render();
 };
+
+// Tabs. The choice is a per-viewer convenience, so localStorage is fine;
+// it may be unavailable, and the panel works without it.
+const tabs = [...document.querySelectorAll('.segmented button')];
+function showTab(name) {
+  for (const b of tabs) b.setAttribute('aria-selected', String(b.dataset.tab === name));
+  for (const m of document.querySelectorAll('main[data-panel]')) m.hidden = m.dataset.panel !== name;
+  scrollTo(0, 0);
+  try {
+    localStorage.setItem('scout-tab', name);
+  } catch {}
+}
+for (const b of tabs) b.onclick = () => showTab(b.dataset.tab);
+document.querySelector('.segmented').onkeydown = (e) => {
+  const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+  if (!step) return;
+  const i = tabs.findIndex((b) => b.getAttribute('aria-selected') === 'true');
+  const next = tabs[(i + step + tabs.length) % tabs.length];
+  showTab(next.dataset.tab);
+  next.focus();
+};
+let saved = 'page';
+try {
+  saved = localStorage.getItem('scout-tab') || 'page';
+} catch {}
+showTab(tabs.some((b) => b.dataset.tab === saved) ? saved : 'page');
+
+// The bar gains a hairline only once content scrolls under it.
+addEventListener('scroll', () => document.querySelector('.bar').classList.toggle('scrolled', scrollY > 4), { passive: true });
 
 chrome.tabs.onActivated.addListener(render);
 chrome.storage.onChanged.addListener(() => render());
