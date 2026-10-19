@@ -1,16 +1,20 @@
 {
   "manifest_version": 3,
   "name": "Scout",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Quiet until it matters: trackers, scams, bots and provenance, explained.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7r1GAzX/6MKB5MaepzMQ1QMD+IHEkFkCjyFUo86r2LkXvYQg4ypDiQzMKDvA1Ui8PT4/FCfkPY2HGR3S5S9kgJSDOICskvLQahA/nWPa7aBqDDhkPhlz16EymPgXpGrdCzKDpq2gjH93IQaOcQ+8CyWygA2fGrDyHj8eEUAVAyuFgPiYcz7HXfQSAUO/IvZcSU4r6yHYcZAJU1b8lTLgG/Znuy6UlEuik+n2mPak9CIOevnnZKSSwxMTYzvq2WbcMMRDokcZl6xfduStv8uic6tHRChTHBevpioVk47kH0yxZE3tYbAMZmw+UqRdEbx6zeKnvfeQjOc/0JOP0oPeJQIDAQAB",
   "minimum_chrome_version": "138",
   "permissions": [
     "alarms",
+    "browsingData",
+    "clipboardWrite",
     "contextMenus",
     "declarativeNetRequest",
     "declarativeNetRequestFeedback",
+    "downloads",
     "management",
+    "notifications",
     "offscreen",
     "privacy",
     "scripting",
@@ -67,7 +71,7 @@
         "<all_urls>"
       ],
       "js": [
-        "src/content/main-world.js"
+        "dist/main-world.js"
       ],
       "world": "MAIN",
       "run_at": "document_start",
@@ -105,10 +109,16 @@
     },
     {
       "matches": [
-        "*://*.reddit.com/*"
+        "*://*.reddit.com/*",
+        "*://x.com/*",
+        "*://*.x.com/*",
+        "*://twitter.com/*",
+        "*://*.twitter.com/*",
+        "*://www.youtube.com/*",
+        "*://m.youtube.com/*"
       ],
       "js": [
-        "dist/reddit.js"
+        "dist/threads.js"
       ],
       "run_at": "document_idle"
     },
@@ -143,6 +153,45 @@
         "dist/calm.js"
       ],
       "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "dist/guard.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://youtube.com/*",
+        "*://x.com/*",
+        "*://twitter.com/*",
+        "*://instagram.com/*",
+        "*://facebook.com/*",
+        "*://tiktok.com/*",
+        "*://reddit.com/*",
+        "*://threads.net/*",
+        "*://threads.com/*",
+        "*://linkedin.com/*",
+        "*://bsky.app/*",
+        "*://*.youtube.com/*",
+        "*://*.x.com/*",
+        "*://*.twitter.com/*",
+        "*://*.instagram.com/*",
+        "*://*.facebook.com/*",
+        "*://*.tiktok.com/*",
+        "*://*.reddit.com/*",
+        "*://*.threads.net/*",
+        "*://*.threads.com/*",
+        "*://*.linkedin.com/*",
+        "*://*.bsky.app/*"
+      ],
+      "js": [
+        "dist/feeds.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "side_panel": {
@@ -164,5 +213,13 @@
     "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
+  },
+  "commands": {
+    "toggle-xray": {
+      "suggested_key": {
+        "default": "Alt+Shift+X"
+      },
+      "description": "X-ray: show what Scout blocked, hid or marked on this page"
+    }
   }
 }

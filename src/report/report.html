@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scout · This week</title>
+  <link rel="stylesheet" href="../sidepanel/panel.css">
+  <link rel="stylesheet" href="report.css">
+</head>
+<body>
+  <main class="report">
+    <header>
+      <h1><svg class="mark" viewBox="0 0 20 20" aria-hidden="true"><path d="M15.9 4.1A8.4 8.4 0 1 0 18.4 10"/><circle cx="10" cy="10" r="3.2"/></svg> This week</h1>
+      <p class="secondary" id="range"></p>
+    </header>
+    <section class="totals" id="totals"></section>
+    <div class="columns">
+      <section class="label">
+        <h3 class="label-head">Companies blocked most</h3>
+        <ul class="label-rows" id="companies"></ul>
+      </section>
+      <section class="label">
+        <h3 class="label-head">Sites with the most to block</h3>
+        <ul class="label-rows" id="sites"></ul>
+      </section>
+    </div>
+    <section class="label">
+      <h3 class="label-head">Guards that stepped in</h3>
+      <ul class="label-rows" id="guards"></ul>
+    </section>
+    <section class="label">
+      <h3 class="label-head">What left this browser</h3>
+      <ul class="label-rows" id="sent"></ul>
+    </section>
+    <p class="footnote">Counted on this machine only. Scout keeps 35 days of daily totals; nothing here is sent anywhere.</p>
+  </main>
+  <script type="module" src="report.js"></script>
+</body>
+</html>

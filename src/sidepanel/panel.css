@@ -358,3 +358,58 @@ form.form .btn { margin: 2px 10px 10px auto; }
   *, *::before, *::after { transition: none !important; }
   .btn[aria-busy='true']::after { animation-duration: 1.6s !important; }
 }
+
+/* Banners: a temporary state worth knowing about, above everything. */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border));
+  border-radius: var(--r-md);
+  background: var(--warn-soft);
+  color: var(--text);
+}
+#update-banner { border-color: color-mix(in srgb, var(--info) 45%, var(--border)); background: var(--info-soft); }
+
+/* Tools: five quiet buttons, two to a row. */
+.tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tools .btn { width: 100%; min-height: 34px; }
+.tools .btn[aria-pressed='true'] { background: var(--text); color: var(--bg); }
+
+/* Mode: three choices, each with its one-line promise. */
+.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 2px; border-radius: 12px; background: var(--fill); }
+.modes button {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  padding: 8px 6px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-dim);
+  font: 700 12.5px/1.2 var(--sans);
+  cursor: pointer;
+  transition: background .2s var(--ease), color .2s var(--ease);
+}
+.modes button[aria-checked='true'] { background: var(--surface); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+.row select.small { max-width: 46%; }
+
+/* Activity: a day label, then one line per thing Scout did. */
+.activity-head { display: flex; align-items: baseline; gap: 10px; }
+.activity-head .group-title { margin-bottom: 8px; }
+.act-day { margin: 14px 2px 6px; font: 600 11px/1 var(--mono); color: var(--text-faint); }
+.act { display: grid; grid-template-columns: 7px 1fr auto; gap: 4px 10px; align-items: baseline; }
+.act .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); transform: translateY(-1px); }
+.act.bad .dot { background: var(--danger); }
+.act.good .dot { background: var(--accent); }
+.act .when { font: 11px/1.4 var(--mono); color: var(--text-faint); }
+.act .where { grid-column: 2 / -1; font: 11px/1.4 var(--mono); color: var(--text-faint); }
+
+/* Outlet card facts, as label rows. */
+.facts { list-style: none; margin: 0 !important; padding: 0 !important; }
+.facts li { display: flex; justify-content: space-between; gap: 14px; padding: 6px 0; border-top: 1px solid var(--border-soft); color: var(--text-dim) !important; }
+.facts li .v { color: var(--text); text-align: right; }
+.facts li .v.warn { color: var(--warn); }
+
+.pills button { padding: 4px 8px; }

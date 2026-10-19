@@ -10,9 +10,13 @@ await Promise.all([
   build({ ...shared, entryPoints: ['src/content/page.js'], outfile: 'dist/page.js', format: 'iife' }),
   build({ ...shared, entryPoints: ['src/content/consent.js'], outfile: 'dist/consent.js', format: 'iife' }),
   build({ ...shared, entryPoints: ['src/content/spoilers.js'], outfile: 'dist/spoilers.js', format: 'iife' }),
-  build({ ...shared, entryPoints: ['src/content/reddit.js'], outfile: 'dist/reddit.js', format: 'iife' }),
+  build({ ...shared, entryPoints: ['src/content/threads.js'], outfile: 'dist/threads.js', format: 'iife' }),
   build({ ...shared, entryPoints: ['src/content/slop.js'], outfile: 'dist/slop.js', format: 'iife' }),
   build({ ...shared, entryPoints: ['src/content/calm.js'], outfile: 'dist/calm.js', format: 'iife' }),
+  build({ ...shared, entryPoints: ['src/content/guard.js'], outfile: 'dist/guard.js', format: 'iife' }),
+  build({ ...shared, entryPoints: ['src/content/main-world.js'], outfile: 'dist/main-world.js', format: 'iife' }),
+  build({ ...shared, entryPoints: ['src/content/feeds.js'], outfile: 'dist/feeds.js', format: 'iife' }),
+  build({ ...shared, entryPoints: ['src/content/farble.js'], outfile: 'dist/farble.js', format: 'iife' }),
   // Service-worker side of autoconsent: the main-world snippets and rule filter.
   build({ ...shared, entryPoints: ['src/background/consent-lib.js'], outfile: 'dist/consent-lib.js', format: 'esm' }),
   // C2PA reading, loaded only by the offscreen document.

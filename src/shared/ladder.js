@@ -4,6 +4,8 @@
 // Hard flags are deterministic red signals. Nothing downstream (a model, a
 // dismissal) can lower them; only explicitly trusting the site clears them.
 // Soft flags are context, and repeated dismissals mute them.
+// A hard flag marked `always` stops whatever the stakes: a page poisoning
+// your clipboard or a swapped wallet address is dangerous with no form on it.
 // Info flags (fingerprinting, which login pages do routinely for fraud
 // checks) are shown in the panel and never move the badge.
 
@@ -15,7 +17,7 @@ export function assess({ stakes = {}, flags = [], dismissals = {} }) {
   const soft = flags.filter((f) => f.severity === 'soft' && (dismissals[f.kind] ?? 0) < DISMISS_MUTE_AFTER);
 
   let level = 'quiet';
-  if (hard.length && highStakes) level = 'stop';
+  if (hard.some((f) => f.always) || (hard.length && highStakes)) level = 'stop';
   else if (hard.length || (highStakes && soft.length)) level = 'note';
 
   // Climb to the cloud only in the uncertain middle: real stakes, mixed local

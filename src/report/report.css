@@ -1,0 +1,14 @@
+.report { max-width: 760px; margin: 0 auto; padding: 32px 20px 48px; }
+.report header { margin-bottom: 20px; }
+.report h1 { display: flex; align-items: center; gap: 10px; font-size: 34px; font-weight: 700; letter-spacing: -1px; }
+.report h1 .mark { width: 26px; height: 26px; }
+.report section { margin-top: 16px; }
+.totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.stat { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.stat .n { font: 700 26px/1.1 var(--mono); letter-spacing: -.5px; }
+.stat .k { margin-top: 6px; font-size: 10.5px; font-weight: 800; letter-spacing: 1.9px; text-transform: uppercase; color: var(--text-faint); }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.columns section { margin-top: 16px; }
+.bar { position: relative; }
+.bar::before { content: ''; position: absolute; inset: 3px auto 3px 0; width: var(--w); background: var(--accent-soft); border-radius: 4px; z-index: 0; }
+.bar > * { position: relative; }

@@ -3,7 +3,7 @@
 // SDK stays out of the service worker, and so slow calls outlive the worker's
 // idle timer.
 import { Anthropic } from '../../dist/anthropic.js';
-import { Context, Reader, createC2pa } from '../../dist/c2pa.js';
+import { Context, Reader, createC2pa, jsQR } from '../../dist/c2pa.js';
 import { sniffMetadata } from '../shared/provenance.js';
 
 function describe(error) {
@@ -90,7 +90,28 @@ async function readImage({ url }) {
   } catch (error) {
     c2paError = String(error?.message ?? error);
   }
-  return { url, type: blob.type, size: blob.size, store, c2paError, head: Array.from(bytes.subarray(0, 16)), meta: sniffMetadata(bytes) };
+  return { url, type: blob.type, size: blob.size, store, c2paError, head: Array.from(bytes.subarray(0, 16)), meta: sniffMetadata(bytes), qr: await readQr(blob) };
+}
+
+// QR codes in the image, so a code's link gets the same checks as any link.
+// Chrome's BarcodeDetector where it exists (macOS, ChromeOS), jsQR elsewhere.
+async function readQr(blob) {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    if (globalThis.BarcodeDetector) {
+      const found = await new BarcodeDetector({ formats: ['qr_code'] }).detect(bitmap).catch(() => []);
+      if (found.length) return found.map((f) => f.rawValue).slice(0, 3);
+    }
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = new OffscreenCanvas(Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(data, canvas.width, canvas.height);
+    return code?.data ? [code.data] : [];
+  } catch {
+    return [];
+  }
 }
 
 // Fetches a page (a privacy policy, say) without cookies and returns its

@@ -15,7 +15,10 @@ import { originalUrl, summarizeProvenance } from '../shared/provenance.js';
 import { getSpend, publicSettings, saveSettings } from './settings.js';
 import { pageFlags } from '../shared/assessment.js';
 import { normalizeEntry } from '../shared/spoilers.js';
+import { GUARD_KEYS, MODES, effectiveGuards } from '../shared/modes.js';
 import { evalSnippets, filterCompactRules } from '../../dist/consent-lib.js';
+import { currentGuards, installGuards } from './guards.js';
+import { count, logActivity } from './activity.js';
 
 // Reject everything a banner offers; cosmetic rules hide banners that can't be
 // answered. Heuristic detection stays off: it guesses at buttons.
@@ -150,13 +153,29 @@ async function reassess(tabId, state) {
   const flags = trusted ? [] : state.flags;
   const result = assess({ stakes: state.stakes, flags, dismissals: await memory.dismissals() });
 
+  const why = flags.find((f) => f.severity === 'hard');
+  // Guards that stop a page log their own, more specific entry.
+  if (result.level === 'stop' && state.level !== 'stop' && state.host && !why?.always) {
+    logActivity({ kind: 'warning', host: state.host, tone: 'bad', text: `Warned you: ${why?.text ?? 'this page looks dangerous.'}` });
+    count(['guards', 'warnings']);
+  }
   state.level = result.level;
   state.escalate = result.escalate;
   state.trusted = Boolean(trusted);
-  const badge = BADGE[result.level];
+  setBadge(tabId, state);
+  return state;
+}
+
+// Notes and stops always show. In Watchful mode a quiet page shows how many
+// requests Scout blocked, in gray.
+function setBadge(tabId, state) {
+  let badge = BADGE[state.level];
+  if (state.level === 'quiet' && currentGuards().badgeCount) {
+    const n = Object.values(state.trackers ?? {}).reduce((a, t) => a + t.blocked, 0) + (state.ads ?? 0);
+    if (n) badge = { text: n > 999 ? '999+' : String(n), color: '#6E6E73' };
+  }
   chrome.action.setBadgeText({ tabId, text: badge.text }).catch(() => {});
   chrome.action.setBadgeBackgroundColor({ tabId, color: badge.color }).catch(() => {});
-  return state;
 }
 
 // Replaces flags of the same kind, so a re-check updates its note in place.
@@ -185,7 +204,7 @@ function maybeEscalate(tabId, state) {
 }
 
 // Shields: on/off switches and sites where blocking is paused.
-const SHIELD_DEFAULTS = { slop: true, paused: [], calm: {}, aiLabels: true };
+const SHIELD_DEFAULTS = { slop: true, paused: [], calm: {}, aiLabels: true, mode: 'balanced', guards: {}, farble: [] };
 const PAUSE_RULE_BASE = 10_000;
 
 async function getShields() {
@@ -196,10 +215,10 @@ async function getShields() {
 // A paused site gets one high-priority allowAllRequests rule, which lets
 // every request from its pages through all of Scout's rulesets.
 async function syncPauseRules(paused) {
-  const existing = (await chrome.declarativeNetRequest.getDynamicRules()).filter((r) => r.id >= PAUSE_RULE_BASE).map((r) => r.id);
+  const existing = (await chrome.declarativeNetRequest.getDynamicRules()).filter((r) => r.id >= PAUSE_RULE_BASE && r.id < PAUSE_RULE_BASE + 9000).map((r) => r.id);
   await chrome.declarativeNetRequest.updateDynamicRules({
     removeRuleIds: existing,
-    addRules: paused.map((domain, i) => ({
+    addRules: paused.slice(0, 8999).map((domain, i) => ({
       id: PAUSE_RULE_BASE + i,
       priority: 1000,
       action: { type: 'allowAllRequests' },
@@ -232,26 +251,33 @@ chrome.webNavigation.onCommitted.addListener(({ tabId, frameId, url, timeStamp }
   updateTab(tabId, async () => reassess(tabId, await freshTab(url, timeStamp)));
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => dropTab(tabId));
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  const state = await getTab(tabId);
+  await guardHooks.onTabClosed(tabId, state).catch(() => {});
+  dropTab(tabId);
+});
 
 // Fires only for unpacked extensions, which is how Scout runs. It powers the
 // per-site tracker ledger.
 chrome.declarativeNetRequest.onRuleMatchedDebug?.addListener(({ request, rule }) => {
   if (request.tabId < 0) return;
-  if (rule.rulesetId === 'easylist') {
-    updateTab(request.tabId, (state) => {
-      state.ads = (state.ads ?? 0) + 1;
-      return state;
-    });
-    return;
-  }
-  if (rule.rulesetId !== 'easyprivacy') return;
-  const host = new URL(request.url).hostname;
+  const list = rule.rulesetId === 'easylist' ? 'ads' : rule.rulesetId === 'easyprivacy' ? 'trackers' : rule.rulesetId === '_dynamic' && rule.ruleId === 20_000 ? 'trackers' : null;
+  if (!list) return;
+  const url = new URL(request.url);
   updateTab(request.tabId, async (state) => {
-    const tracker = trackerFor(host, await loadOwners());
-    const entry = state.trackers[tracker.domain] ?? { company: tracker.company, blocked: 0 };
-    entry.blocked += 1;
-    state.trackers[tracker.domain] = entry;
+    const tracker = trackerFor(url.hostname, await loadOwners());
+    if (list === 'ads') state.ads = (state.ads ?? 0) + 1;
+    else {
+      const entry = state.trackers[tracker.domain] ?? { company: tracker.company, blocked: 0 };
+      entry.blocked += 1;
+      state.trackers[tracker.domain] = entry;
+    }
+    // The request log behind the panel's list and x-ray: host and path, no query.
+    state.requests = [{ host: url.hostname, path: url.pathname.slice(0, 60), type: request.type, list, company: tracker.company }, ...(state.requests ?? [])].slice(0, 150);
+    count(['blocked', list]);
+    count(['companies', tracker.company]);
+    if (state.host) count(['sites', registrableDomain(state.host)]);
+    if (state.level === 'quiet') setBadge(request.tabId, state);
     return state;
   });
 });
@@ -325,6 +351,7 @@ const handlers = {
         if (message.type === 'optOutResult' && message.result) return;
         return updateTab(tabId, async (current) => {
           const state = await atUrl(current, sender.tab.url, frameId === 0 ? timeOrigin : undefined);
+          if (message.type === 'autoconsentDone' && !state.consent) count(['banners']);
           state.consent = message.type === 'autoconsentDone'
             ? { cmp: message.cmp, cosmetic: message.isCosmetic, clicks: message.totalClicks }
             : { cmp: message.cmp, failed: true };
@@ -349,6 +376,11 @@ const handlers = {
       settings: await publicSettings(),
       spend: await getSpend(),
       nano: await cachedNanoStatus(),
+      guards: effectiveGuards(await getShields()),
+      update: (await chrome.storage.local.get('update')).update ?? null,
+      peek: (await chrome.storage.local.get('peek')).peek ?? null,
+      xray: ((await chrome.storage.session.get('xrayTabs')).xrayTabs ?? []).includes(tabId),
+      version: chrome.runtime.getManifest().version,
     };
   },
 
@@ -382,6 +414,7 @@ const handlers = {
       comments: Number(report?.comments) || 0,
       checked: Number(report?.checked) || 0,
       clusters: (report?.clusters ?? []).length,
+      thread: { subreddit: report?.thread?.subreddit ? String(report.thread.subreddit).slice(0, 60) : null },
     };
     return updateTab(sender.tab.id, async (current) => {
       const state = await atUrl(current, sender.tab.url);
@@ -427,6 +460,20 @@ const handlers = {
         if (better?.store || hasAiHints(better?.meta)) read = better;
       }
       entry = { url, ...summarizeProvenance({ ...read, triedOriginal }), at: Date.now() };
+      // A QR code's link gets the same checks as a link you right-click.
+      for (const code of (read.qr ?? []).slice(0, 2)) {
+        if (!/^https?:\/\//i.test(code)) {
+          entry.lines = [...entry.lines, `QR code: ${String(code).slice(0, 120)}`];
+          continue;
+        }
+        const { findings } = linkFindings(code, await memory.protectedDomains());
+        const hard = findings.some((f) => f.severity === 'hard');
+        entry.lines = [...entry.lines, `QR code links to ${code.slice(0, 120)}`, ...findings.map((f) => f.text)];
+        if (hard) {
+          entry.tone = 'tampered';
+          entry.headline = `Careful: this image's QR code leads somewhere suspicious. ${entry.headline}`;
+        }
+      }
     } catch (error) {
       entry = { url, tone: 'none', headline: "Couldn't check this image.", lines: [error.message], at: Date.now() };
     }
@@ -483,6 +530,15 @@ const handlers = {
     next.aiLabels = Boolean(next.aiLabels);
     next.calm = Object.fromEntries(Object.entries(next.calm ?? {}).map(([k, v]) => [String(k).slice(0, 30), Boolean(v)]));
     next.paused = [...new Set((next.paused ?? []).map(String))].slice(0, 500);
+    next.mode = MODES[next.mode] ? next.mode : 'balanced';
+    // Changing the mode resets per-guard overrides to that mode's defaults.
+    if (changes.mode && !changes.guards) next.guards = {};
+    next.guards = Object.fromEntries(
+      Object.entries(next.guards ?? {})
+        .filter(([k]) => GUARD_KEYS.includes(k))
+        .map(([k, v]) => [k, k === 'feedLimit' ? Math.max(0, Math.min(600, Number(v) || 0)) : k === 'toasts' ? (['off', 'first', 'always'].includes(v) ? v : 'first') : Boolean(v)]),
+    );
+    next.farble = [...new Set((next.farble ?? []).map(String).filter((d) => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(d)))].slice(0, 200);
     await chrome.storage.local.set({ shields: next });
     await syncPauseRules(next.paused);
     return next;
@@ -590,6 +646,12 @@ const handlers = {
   exportMemory: () => memory.exportMemory(),
   importMemory: ({ file }) => memory.importMemory(file),
 };
+
+const guardHooks = installGuards({ handlers, mergeFlags, reassess, atUrl, getShields });
+
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command === 'toggle-xray' && tab?.id) handlers.xray({ tabId: tab.id });
+});
 
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   const handler = handlers[message?.type];

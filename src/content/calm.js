@@ -45,6 +45,28 @@ function css(text) {
   style.dataset.scout = 'calm';
   style.textContent = text;
   (document.head ?? document.documentElement).append(style);
+  return style;
+}
+
+// X-ray: lift the hiding rules and label what they caught, so you can see
+// what Calm took away. Closing x-ray puts everything back.
+function xrayable(hides, active) {
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message?.type !== 'xray') return;
+    hides.disabled = Boolean(message.on);
+    for (const [, r] of active) {
+      for (const sel of r.selectors) {
+        let els = [];
+        try {
+          els = document.querySelectorAll(sel);
+        } catch {}
+        for (const el of els) {
+          if (message.on) el.dataset.scoutXray = `Hidden by Calm · ${r.label.replace(/^(Hide|Stop) /, '')}`;
+          else delete el.dataset.scoutXray;
+        }
+      }
+    }
+  });
 }
 
 const NOTE_CSS = `[data-scout-calm] { display: none !important; }${CAPSULE}`;
@@ -132,7 +154,9 @@ async function start() {
   const selectors = active.flatMap(([, r]) => r.selectors);
   // One rule per selector: an invalid selector then fails alone instead of
   // voiding the whole list.
-  css(NOTE_CSS + selectors.map((s) => `\n${s} { display: none !important; }`).join(''));
+  css(NOTE_CSS);
+  const hides = css(selectors.map((s) => `\n${s} { display: none !important; }`).join(''));
+  xrayable(hides, active.filter(([, r]) => r.selectors.length));
   for (const [, r] of active) if (r.behavior === 'pause-autoplay') pauseAutoplay(r.exempt);
   const recount = counter(active.filter(([, r]) => r.selectors.length));
   new MutationObserver(recount).observe(document.documentElement, { childList: true, subtree: true });

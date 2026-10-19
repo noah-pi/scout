@@ -15,6 +15,7 @@
     </h1>
     <nav class="pills" role="tablist" aria-label="Sections">
       <button type="button" role="tab" data-tab="page" aria-selected="true">Page</button>
+      <button type="button" role="tab" data-tab="activity">Activity</button>
       <button type="button" role="tab" data-tab="shields">Shields</button>
       <button type="button" role="tab" data-tab="settings">Settings</button>
     </nav>
@@ -22,6 +23,8 @@
 
   <!-- PAGE: one verdict, the evidence behind it, and the few things you can do. -->
   <main data-panel="page">
+    <div class="banner" id="peek-banner" hidden><span class="grow">You're seeing <b id="peek-site"></b> without Scout.</span><button type="button" class="btn primary small" id="peek-restore">Restore</button></div>
+    <div class="banner" id="update-banner" hidden><span class="grow" id="update-text"></span></div>
     <section class="verdict" id="hero" data-level="quiet" aria-live="polite">
       <div class="verdict-head">
         <svg class="glyph" id="glyph" viewBox="0 0 24 24" aria-hidden="true"></svg>
@@ -38,6 +41,7 @@
 
     <ul class="group" id="notes" hidden></ul>
 
+    <div class="card" id="outlet" hidden></div>
     <div class="card" id="investigation" hidden></div>
     <div class="card" id="fine-print-result" hidden></div>
 
@@ -73,12 +77,29 @@
           </button>
           <ul id="trackers" class="sub" hidden></ul>
         </li>
+        <li class="label-row" id="replay" hidden><span class="n">Session recording</span><span class="v"></span></li>
         <li class="label-row" id="ads-row" hidden><span class="n">Ads</span><span class="v" id="ads"></span></li>
         <li class="label-row" id="fingerprinting" hidden><span class="n">Fingerprinting</span><span class="v dim"></span></li>
         <li class="label-row" id="consent" hidden><span class="n">Cookie banner</span><span class="v"></span></li>
         <li class="label-row" id="slop" hidden><span class="n">AI-heavy results</span><span class="v"></span></li>
         <li class="label-row" id="calm-status" hidden><span class="n">Calm</span><span class="v"></span></li>
+        <li class="label-row" id="affiliates" hidden><span class="n">Affiliate links</span><span class="v"></span></li>
+        <li class="label-row" id="unwrapped" hidden><span class="n">Links unwrapped</span><span class="v"></span></li>
+        <li class="label-row" id="email" hidden><span class="n">Tracked emails</span><span class="v"></span></li>
+        <li class="label-row" id="farbled" hidden><span class="n">Fingerprint defense</span><span class="v ok">On</span></li>
       </ul>
+    </section>
+
+    <section id="tools" aria-labelledby="tools-head">
+      <h3 class="group-title" id="tools-head">Tools</h3>
+      <div class="tools">
+        <button type="button" class="btn secondary small" id="xray" title="Alt+Shift+X">X-ray</button>
+        <button type="button" class="btn secondary small" id="peek">Without Scout</button>
+        <button type="button" class="btn secondary small" id="outlet-lookup">Who runs this?</button>
+        <button type="button" class="btn secondary small" id="cite">Cite + archive</button>
+        <button type="button" class="btn secondary small" id="evidence">Save evidence</button>
+      </div>
+      <p class="footnote" id="tool-status" role="status"></p>
     </section>
 
     <div class="footer-actions">
@@ -86,14 +107,52 @@
     </div>
   </main>
 
+  <!-- ACTIVITY: what Scout did, in plain sentences, newest first. -->
+  <main data-panel="activity" hidden>
+    <section>
+      <div class="activity-head">
+        <h3 class="group-title">What Scout did</h3>
+        <span class="grow"></span>
+        <button type="button" class="btn link" id="open-report">This week</button>
+        <button type="button" class="btn link danger" id="clear-activity">Clear</button>
+      </div>
+      <div id="activity-list"></div>
+      <p class="footnote">Routine work (trackers, ads, cookie banners) is counted on the weekly page. This list keeps what you'd want to know about: warnings, interventions, and things you asked for.</p>
+    </section>
+  </main>
+
   <!-- SHIELDS: switches, grouped the way you'd think about them. -->
   <main data-panel="shields" hidden>
+    <section>
+      <h3 class="group-title">How much Scout says</h3>
+      <div class="modes" role="radiogroup" aria-label="Mode" id="modes"></div>
+      <p class="footnote" id="mode-about"></p>
+    </section>
+
     <section>
       <h3 class="group-title">This site</h3>
       <ul class="group">
         <li class="row buttons"><span id="pause-status" class="grow"></span><button type="button" class="btn secondary small" id="pause">Pause</button></li>
+        <li><label class="row switch"><span>Fingerprint defense here<small>Gives trackers slightly different canvas, audio and GPU readings each visit. Can break some sites.</small></span><input type="checkbox" role="switch" id="farble"></label></li>
       </ul>
       <p class="footnote">If a site breaks, pause blocking and cookie handling for it. Scam checks keep running.</p>
+    </section>
+
+    <section>
+      <h3 class="group-title">Guards</h3>
+      <ul class="group" id="guard-protective"></ul>
+      <p class="footnote">On in every mode. Each acts only when something goes wrong, and tells you on the page when it does.</p>
+    </section>
+
+    <section>
+      <h3 class="group-title">On the page</h3>
+      <ul class="group" id="guard-visible"></ul>
+      <p class="footnote">Set by the mode above; change any one here.</p>
+    </section>
+
+    <section>
+      <h3 class="group-title">Opt in</h3>
+      <ul class="group" id="guard-optin"></ul>
     </section>
 
     <section>
@@ -144,6 +203,7 @@
       <h3 class="group-title">Chrome</h3>
       <ul class="group">
         <li class="row buttons"><span id="chrome" class="grow"></span><button type="button" class="btn secondary small" id="chrome-settings">Open</button></li>
+        <li class="row buttons"><span class="grow">Sites allowed to send you notifications</span><button type="button" class="btn secondary small" id="notify-settings">Review</button></li>
       </ul>
     </section>
   </main>
@@ -153,6 +213,7 @@
     <section>
       <h3 class="group-title">Today</h3>
       <ul class="group">
+        <li class="row buttons"><span id="version" class="grow mono"></span><button type="button" class="btn secondary small" id="check-update">Check for update</button></li>
         <li class="row"><span id="spend" class="grow"></span></li>
         <li class="row buttons"><span id="nano" class="grow"></span><button type="button" class="btn secondary small" id="nano-download" hidden>Download</button></li>
       </ul>

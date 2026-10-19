@@ -46,6 +46,9 @@ export async function launch() {
 
   // An extension page can call chrome.* (Playwright's worker handle can't).
   const probe = await context.newPage();
+  // Hand downloads back to Chrome, so the extension sees them as you would.
+  const cdp = await context.newCDPSession(probe);
+  await cdp.send('Browser.setDownloadBehavior', { behavior: 'default', eventsEnabled: false }).catch(() => {});
   await probe.goto(`chrome-extension://${id}/src/sidepanel/panel.html`);
   // Give Chrome a moment to finish loading rulesets after install.
   await probe.waitForTimeout(500);

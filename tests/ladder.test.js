@@ -58,3 +58,8 @@ test('trust lapses when the domain is re-registered or expires', () => {
   assert.equal(trustStillValid(record, null, now + 400 * 86_400_000), false);
   assert.equal(trustStillValid(undefined, null, now), false);
 });
+
+test('an always-stop hard flag stops without stakes', () => {
+  assert.equal(assess({ flags: [{ kind: 'clipboard-command', severity: 'hard', always: true }] }).level, 'stop');
+  assert.equal(assess({ flags: [{ kind: 'lookalike', severity: 'hard' }] }).level, 'note');
+});

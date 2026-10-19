@@ -1,4 +1,5 @@
 import { MODELS } from '../shared/assessment.js';
+import { MODES } from '../shared/modes.js';
 
 const $ = (id) => document.getElementById(id);
 const dollars = (usd) => (usd > 0 && usd < 0.0001 ? '<$0.0001' : `$${usd.toFixed(usd < 0.01 ? 4 : 2)}`);
@@ -79,7 +80,14 @@ function card(box, { lead, tone = '', body = [], list = [], meta }) {
 async function render() {
   const tabId = await activeTabId();
   if (tabId === undefined) return;
-  const { tab, blocked, receipts, chrome: protection, settings, spend, nano, shields, site, trusted, extensions, pageRules } = await ask({ type: 'panelState', tabId });
+  const state = await ask({ type: 'panelState', tabId });
+  const { tab, blocked, receipts, chrome: protection, settings, spend, nano, shields, site, trusted, extensions, pageRules } = state;
+  renderBanners(state, site);
+  renderTools(state, tab);
+  renderGuards(state, tab, site);
+  renderModeAndGuards(state.guards, shields, site);
+  renderActivity();
+  renderOutlet(tab.outlet);
 
   const level = !tab.host ? 'idle' : tab.trusted ? 'trusted' : tab.level;
   $('hero').dataset.level = level;
@@ -219,6 +227,8 @@ function renderCensus(census) {
   const summary = $('census-summary');
   summary.replaceChildren(el('strong', '', verdict), el('small', 'secondary', `${plural(census.comments, 'comment')} · ${plural(census.authors, 'account')}${census.checked ? ` · ${census.checked} checked` : ''}`));
   $('census-notes').closest('li').hidden = !census.notes.length;
+  // Account lookups exist only on Reddit.
+  $('census-profiles').hidden = !census.thread?.subreddit;
   $('census-notes').replaceChildren(...census.notes.map((n) => el('li', '', n)));
   const a = census.analysis;
   const box = $('census-analysis');
@@ -489,3 +499,187 @@ addEventListener('scroll', () => document.querySelector('.bar').classList.toggle
 chrome.tabs.onActivated.addListener(render);
 chrome.storage.onChanged.addListener(() => render());
 render();
+
+// ---- Banners: a temporary state, said once at the top ----------------------
+function renderBanners({ peek, update, version }, site) {
+  $('peek-banner').hidden = !(peek && peek.domain === site);
+  $('peek-site').textContent = peek?.domain ?? '';
+  $('update-banner').hidden = !update?.newer;
+  $('update-text').textContent = update?.newer ? `Scout ${update.latest} is out (you have ${version}). Run git pull in the Scout folder, then reload Scout in chrome://extensions.` : '';
+  $('version').textContent = `Scout ${version}${update?.checkedAt ? (update.newer ? ` · ${update.latest} available` : ' · up to date') : ''}`;
+}
+$('peek-restore').onclick = async (e) => busy(e.currentTarget, async () => ask({ type: 'peek', tabId: await activeTabId(), on: false }), 'tool-status');
+$('check-update').onclick = (e) => busy(e.currentTarget, () => ask({ type: 'checkUpdate' }), 'tool-status');
+
+// ---- Tools -------------------------------------------------------------------
+function renderTools({ xray, peek }, tab) {
+  $('tools').hidden = !tab.host;
+  $('xray').setAttribute('aria-pressed', String(Boolean(xray)));
+  $('xray').textContent = xray ? 'X-ray on' : 'X-ray';
+  $('peek').disabled = Boolean(peek);
+}
+const toolStatus = (text) => ($('tool-status').textContent = text);
+$('xray').onclick = async (e) => busy(e.currentTarget, async () => ask({ type: 'xray', tabId: await activeTabId() }), 'tool-status');
+$('peek').onclick = async (e) => busy(e.currentTarget, async () => {
+  await ask({ type: 'peek', tabId: await activeTabId(), on: true });
+  toolStatus('Reloaded without Scout\'s blocking or marks. Restore from the banner; it also ends when you leave the site, or after five minutes.');
+}, 'tool-status');
+$('outlet-lookup').onclick = async (e) => busy(e.currentTarget, async () => ask({ type: 'outlet', tabId: await activeTabId() }), 'tool-status');
+$('cite').onclick = async (e) => busy(e.currentTarget, async () => {
+  toolStatus('Asking the Internet Archive for a fresh copy. This can take half a minute.');
+  const { text, archived } = await ask({ type: 'cite', tabId: await activeTabId() });
+  await navigator.clipboard.writeText(text);
+  toolStatus(archived ? `Copied, with the archived copy: ${text}` : `Copied (the archive didn't answer, so no archived link): ${text}`);
+}, 'tool-status');
+$('evidence').onclick = async (e) => busy(e.currentTarget, async () => {
+  const { folder, hashes } = await ask({ type: 'saveEvidence', tabId: await activeTabId() });
+  toolStatus(`Saved to Downloads/${folder}: the page, a screenshot, and a signed record (page ${hashes['page.html'].slice(0, 10)}…).`);
+}, 'tool-status');
+
+function renderOutlet(o) {
+  const box = $('outlet');
+  if (!o) return (box.hidden = true);
+  if (!o.found) return card(box, { lead: 'Not on Wikidata', body: [`Wikidata has no entry whose official website is ${o.domain}. Small and new sites often don't; so do some that would rather not be looked up.`] });
+  const rows = [
+    ['Owned by', o.owners.join(', ')],
+    ['Part of', o.parents.join(', ')],
+    ['Country', o.countries.join(', ')],
+    ['Founded', o.founded ? String(o.founded) : ''],
+    ['Kind', o.types.join(', ')],
+    ['Leaning', o.leanings.join(', ')],
+  ].filter(([, v]) => v);
+  card(box, { lead: o.name, tone: o.state ? 'mixed' : '', body: [o.about && o.about[0].toUpperCase() + o.about.slice(1), o.state && 'Listed as state-run or government-funded media.'], meta: 'From Wikidata, which anyone can edit.' });
+  const facts = el('ul', 'facts');
+  facts.append(...rows.map(([n, v]) => li('', el('span', '', n), el('span', 'v', v))));
+  box.lastChild.before(facts);
+  if (o.wikipedia) {
+    const a = Object.assign(el('a', '', 'Wikipedia'), { href: o.wikipedia, target: '_blank', rel: 'noopener' });
+    box.lastChild.append(' · ', a);
+  }
+}
+
+// ---- Label rows the guards fill ---------------------------------------------
+function renderGuards({ shields }, tab, site) {
+  const g = tab.guard ?? {};
+  const row = (id, show, text, tone = '') => {
+    $(id).hidden = !show;
+    const v = $(id).querySelector('.v');
+    v.textContent = text;
+    v.className = `v ${tone}`.trim();
+  };
+  row('replay', g.replay?.length, `${g.replayBlocked ? 'Blocked' : 'Running'} · ${g.replay?.join(', ')}`, g.replayBlocked ? 'ok' : 'warn');
+  const networks = Object.keys(g.affiliates?.networks ?? {});
+  row('affiliates', g.affiliates?.total, `${g.affiliates?.total} · ${networks.slice(0, 3).join(', ')}`);
+  row('unwrapped', g.unwrapped, String(g.unwrapped));
+  row('email', g.email?.messages, `${g.email?.messages}${g.email?.names?.length ? ` · ${g.email.names.slice(0, 3).join(', ')}` : ''}`, 'warn');
+  $('farbled').hidden = !(site && (shields.farble ?? []).includes(site));
+}
+
+// ---- Shields: mode and guards ----------------------------------------------
+const GUARDS = {
+  protective: [
+    ['unwrap', 'Unwrap tracked links', 'Google, Facebook, YouTube and others log your clicks through redirect links.'],
+    ['clipboard', 'Clipboard guard', 'Stops fake CAPTCHA pages from loading a malware command for you to paste.'],
+    ['addresses', 'Wallet address check', 'Warns if a pasted crypto address differs from the one you copied.'],
+    ['downloads', 'Download check', 'Pauses disguised files and programs from pages Scout warned about.'],
+    ['notifications', 'Hold back notification prompts', 'Only prompts that arrive before you\'ve clicked anything.'],
+    ['replayBlock', 'Block session recording', 'Hotjar, FullStory, Clarity and others that replay your clicks and typing.'],
+  ],
+  visible: [
+    ['toasts', 'First-visit notes', 'A small card on arrival: what Scout handled.', 'select'],
+    ['affiliateMarks', 'Mark affiliate links', 'A small $ on links that pay the site.'],
+    ['dateNotes', 'Date old stories', 'A note on articles two or more years old.'],
+    ['emailMarks', 'Mark tracked emails (Gmail)', 'Names the tracker when an email reports your opens.'],
+    ['darkPatternMarks', 'Outline dark patterns', 'Countdown timers, invented scarcity, pre-ticked add-ons.'],
+    ['badgeCount', 'Count blocks on the icon', 'Gray number on quiet pages.'],
+  ],
+  optin: [
+    ['forgetOnClose', 'Forget sites when you close them', 'Cookies and storage cleared a minute after a site\'s last tab closes. Trusted sites are kept. You\'ll be signed out elsewhere.'],
+    ['honestTitles', 'Honest YouTube titles', 'Crowd-sourced titles from DeArrow. Sends a 4-character hash prefix per video, never the video ID.'],
+    ['outletAuto', 'Look up who runs news sites', 'Automatically, on article pages. Sends the site\'s domain to Wikidata.'],
+    ['feedLimit', 'Daily feed limit', 'Minutes a day on each feed site (YouTube, X, Instagram, TikTok, Reddit…). 0 is off.', 'number'],
+  ],
+};
+
+function guardRow([key, label, about, kind], value) {
+  const text = el('span', 'grow', label);
+  text.append(el('small', '', about));
+  const save = (v) => ask({ type: 'saveShields', changes: { guards: { ...(lastShields.guards ?? {}), [key]: v } } }).then(render);
+  if (kind === 'select') {
+    const sel = el('select', 'small');
+    sel.setAttribute('aria-label', label);
+    sel.append(...[['off', 'Never'], ['first', 'First visit'], ['always', 'Every new site']].map(([v, t]) => Object.assign(el('option', '', t), { value: v })));
+    sel.value = value;
+    sel.onchange = () => save(sel.value);
+    return li('row', text, sel);
+  }
+  if (kind === 'number') {
+    const input = Object.assign(el('input'), { type: 'number', min: 0, max: 600, step: 5, value });
+    input.setAttribute('aria-label', label);
+    input.onchange = () => save(Number(input.value));
+    return li('row', text, input);
+  }
+  const box = Object.assign(el('input'), { type: 'checkbox', checked: Boolean(value) });
+  box.setAttribute('role', 'switch');
+  box.onchange = () => save(box.checked);
+  const row = el('label', 'row switch');
+  row.append(text, box);
+  return li('', row);
+}
+
+let lastShields = {};
+function renderModeAndGuards(guards, shields, site) {
+  lastShields = shields;
+  $('modes').replaceChildren(
+    ...Object.entries(MODES).map(([key, m]) => {
+      const b = Object.assign(el('button', '', m.label), { type: 'button' });
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(guards.mode === key));
+      b.onclick = () => ask({ type: 'saveShields', changes: { mode: key } }).then(render);
+      return b;
+    }),
+  );
+  $('mode-about').textContent = MODES[guards.mode].about;
+  for (const [group, id] of [['protective', 'guard-protective'], ['visible', 'guard-visible'], ['optin', 'guard-optin']]) {
+    if ($(id).contains(document.activeElement)) continue; // don't redraw under your cursor
+    $(id).replaceChildren(...GUARDS[group].map((g) => guardRow(g, guards[g[0]])));
+  }
+  $('farble').checked = Boolean(site && (shields.farble ?? []).includes(site));
+  $('farble').disabled = !site;
+}
+$('farble').onchange = async (e) => {
+  const { site, shields } = await ask({ type: 'panelState', tabId: await activeTabId() });
+  if (!site) return;
+  const farble = e.target.checked ? [...new Set([...(shields.farble ?? []), site])] : (shields.farble ?? []).filter((d) => d !== site);
+  await ask({ type: 'saveShields', changes: { farble } });
+  toolStatus(e.target.checked ? `Fingerprint defense is on for ${site}. Reload the page for it to take effect.` : `Fingerprint defense is off for ${site}.`);
+  render();
+};
+$('notify-settings').onclick = () => chrome.tabs.create({ url: 'chrome://settings/content/notifications' });
+
+// ---- Activity ---------------------------------------------------------------
+async function renderActivity() {
+  const items = await ask({ type: 'getActivity' });
+  const list = $('activity-list');
+  if (!items.length) return list.replaceChildren(el('p', 'footnote', 'Nothing yet. When Scout steps in, it says so here.'));
+  const days = new Map();
+  for (const a of items.slice(0, 200)) {
+    const d = new Date(a.at).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+    if (!days.has(d)) days.set(d, []);
+    days.get(d).push(a);
+  }
+  const out = [];
+  for (const [d, rows] of days) {
+    out.push(el('p', 'act-day', d));
+    const ul = el('ul', 'group');
+    ul.append(...rows.map((a) => {
+      const row = li(`row act ${a.tone ?? ''}`, el('span', 'dot'), el('span', '', a.text), el('span', 'when', time(a.at)));
+      if (a.host) row.append(el('span', 'where', a.host));
+      return row;
+    }));
+    out.push(ul);
+  }
+  list.replaceChildren(...out);
+}
+$('open-report').onclick = () => ask({ type: 'openReport' });
+$('clear-activity').onclick = () => ask({ type: 'clearActivity' }).then(renderActivity);

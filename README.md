@@ -11,7 +11,7 @@ Built for one user, loaded unpacked, never published to the Chrome Web Store.
 
 The manifest carries a fixed `key`, so the extension ID (and the memory stored under it) survives moving the folder. Export memory from the panel before uninstalling; removing the extension erases it.
 
-## What works now (v0.3)
+## What works now (v0.4)
 
 | Piece | What it does |
 |---|---|
@@ -30,11 +30,29 @@ The manifest carries a fixed `key`, so the extension ID (and the memory stored u
 | **Ladder** | Turns stakes and flags into a badge (quiet, `•` note, `!` stop). On a login or payment page whose local signals are mixed (soft flags, no hard one), it climbs: **Gemini Nano** on the device first (free; names the brand the page presents as), then a **quick Claude check** if cloud checks are on and today's cap allows. When cloud checks are off, Scout logs a dry-run receipt instead, so you can see how often one would have run. |
 | **Page checks** | Free local checks once a page asks for a password, a card, a one-time code or a wallet recovery phrase (checked on load, as the page changes, and the moment you click into such a field): a protected brand named in the title or headings on a different domain, a sensitive form that posts to another site, hidden text addressed to AI assistants (prompt injection aimed at tools like Scout), and any request for a recovery phrase, which is a hard stop on its own. Hidden text never reaches a model. |
 | **Investigate** | A button in the panel. Sends Claude the page's fields plus its visible text (redacted, capped at 6,000 characters) at high effort and shows a verdict, a short summary and reasons. |
-| **Census (Reddit)** | Reads the thread already on screen (new and old Reddit) and reports patterns across accounts: near-identical wording from different accounts (marked on the page as "similar wording"), Reddit's generated usernames, bursts of posting. On request it looks up public profiles through your own session (at most 40, slowly, cached for a week) for account age, same-week creation and karma. **Analyze pattern** sends the thread to Opus with usernames replaced by A1, A2…. Scout describes the thread; it never labels one person a bot. |
+| **Census (Reddit, X, YouTube)** | Reads the thread already on screen (new and old Reddit) and reports patterns across accounts: near-identical wording from different accounts (marked on the page as "similar wording"), Reddit's generated usernames, bursts of posting. On request it looks up public profiles through your own session (at most 40, slowly, cached for a week) for account age, same-week creation and karma. **Analyze pattern** sends the thread to Opus with usernames replaced by A1, A2…. Scout describes the thread; it never labels one person a bot. |
 | **Provenance** | Right-click any image → **Check image with Scout**. Reads C2PA Content Credentials with Adobe's c2pa-web (in the offscreen document; the 9 MB WASM loads only on first use), plus unsigned labels: IPTC digital source type, Stable Diffusion and ComfyUI settings in PNGs, generator names, and what looks like China's AIGC label. Checks the signer against the official C2PA trust list (32 certificates: Google, Adobe, DigiCert, SSL.com, Huawei, vivo, Xiaomi and others; refreshed monthly), and keeps "unknown signer" separate from "altered". Tells apart an edited picture from an edited credential. For Google-hosted images it also checks the original-size file, since the displayed copy is stripped. "Nothing found" is said as exactly that. |
 | **Ask Scout** | Right-click a link → **Check this link with Scout**: disguised destinations (`brand.com@elsewhere`), bare IPs, shorteners, lookalikes, punycode, domain age. Local, no model call. Select text → **Is this a scam? Ask Scout**: Haiku judges the message (redacted). |
 | **Fine print** | **Read the fine print** finds the page's privacy policy and terms (in several languages), fetches them without cookies, and has Haiku pull out up to eight points: data selling, AI training, tracking, arbitration, auto-renewal, retention, deletion, opt-out. Every point carries a verbatim quote, and Scout checks each quote against the fetched text; one it can't find is marked so. |
 | **Spoiler shield** | List shows and films with how far you've watched. Bare mentions (a tag, a nav link, a "Severance S2" chip) are left alone. Any real passage that mentions one (or an alias, such as a character's name) is dimmed while Haiku judges it against your progress. Clean passages come straight back. A spoiler veils the whole article, post or comment it sits in, behind one label: a pill on most boxes, a short one on narrow cards, a tooltip on inline text, and a label that follows you down long articles. Verdicts are cached for 30 days. With cloud checks off, or in "hide every mention" mode, every mention stays hidden. |
+| **Clipboard guard** | Fake CAPTCHA pages ("press Win+R, then Ctrl+V") put a malware command on your clipboard. Scout watches every way a page can write the clipboard. On a page that talks like a CAPTCHA, the command never lands, and a warning appears on the page. Elsewhere (an install page's copy button) it goes through and Scout notes it. A blocked command stops the page regardless of stakes. |
+| **Wallet address check** | Remembers the crypto address you copied (this browser session only) and warns beside the field if the one you paste differs, which is the clipboard-hijacker trick. |
+| **Download check** | Pauses files whose names hide a program (`invoice.pdf.exe`, right-to-left tricks, padded names) and programs from pages Scout warned about, then asks through a notification: delete or keep. |
+| **Session recorders** | Blocks Hotjar, FullStory, Microsoft Clarity, LogRocket and about 20 others that replay your clicks and typing. If you allow them, Scout flags them on login and payment pages. |
+| **Unwrapped links** | Click-logging redirects (Google, Facebook, Instagram, YouTube, Bing, LinkedIn, Outlook SafeLinks and others) are rewritten to their destination at the moment you click; `ping` beacons are removed. |
+| **Notification prompts** | A prompt that arrives before you've done anything on the page is held back. Shields links to Chrome's list of sites you've allowed. |
+| **Affiliate links** | Links that pay the site (Amazon tags, Skimlinks, Impact, CJ, Rakuten, Awin and others) get a small `$` and a tooltip; the panel counts them by network. |
+| **Story dates** | Articles more than a year old are dated in the panel; at two years the page gets a note above the headline ("From 2019 · Published Mar 12, 2019, 7 years ago; updated yesterday"). Read from the page's own metadata. |
+| **Dark patterns** | On shop and sign-up pages: countdown timers, invented scarcity, pre-ticked add-ons and guilt-trip opt-outs are named in the panel and outlined on the page. |
+| **Tracked email (Gmail)** | Names the tracker when an email carries an open pixel or tracked links (Mailchimp, HubSpot, Mailtrack, Superhuman and about 30 others), read through Gmail's image proxy. |
+| **QR codes** | **Check image with Scout** also decodes QR codes and runs their links through the lookalike checks. |
+| **Who runs this?** | Owner, parent company, country, founding year, kind and stated leaning from Wikidata, with a note when it is listed as state media. On request, or automatically on articles if you opt in. Sends the domain only. |
+| **Cite + archive** | Asks the Internet Archive for a fresh copy and copies a citation with the archived link. |
+| **Save evidence** | The page's HTML, a screenshot and a record of both files' SHA-256 hashes, signed with an ECDSA key that never leaves this browser, saved to `Downloads/Scout evidence/`. |
+| **Fingerprint defense** | Per site, opt in: canvas and audio readings get a faint per-visit jitter and the GPU reads as generic, so a tracker's fingerprint changes between visits. Can break sites, which is why it's per site. |
+| **Forget on close** | Opt in: a minute after a site's last tab closes, its cookies and storage are cleared. Trusted sites are kept. |
+| **Honest titles (YouTube)** | Opt in: DeArrow's crowd-sourced titles replace clickbait; the original stays in the tooltip. Sends a four-character hash prefix per video, not the video ID. |
+| **Feed limit** | Opt in: minutes a day per feed site (YouTube, X, Instagram, Facebook, TikTok, Reddit, Threads, LinkedIn, Bluesky). Past it, the page dims behind a note: five more minutes, or leave. |
 | **Shields tab** | Pause ad, tracker and cookie-banner blocking on a site that breaks (scam checks keep running); spoiler watchlist; slop-filter switch; trusted sites with remove; an audit of your other extensions that can read every site or control the browser. |
 | **Receipts** | Every request that leaves the browser on Scout's behalf, listed in the panel with what was sent, why and what it cost. |
 | **Memory** | Sites you trust and alerts you dismiss. Trust lapses if a domain's registration date changes (expired and re-bought) or after a year. Hard red flags can't be dismissed; only trusting the site clears them. |
@@ -49,8 +67,9 @@ dist/                   bundled dependencies: autoconsent, tldts (generated, com
 scripts/update-lists.mjs  refreshes rules/ and data/ from upstream (needs network)
 scripts/build.mjs         rebuilds dist/ from node_modules (offline)
 src/shared/             pure logic: ladder, tripwire, trust, tracker naming (unit-tested)
-src/background/         service worker, storage, memory, network lookups
-src/content/            main-world.js (GPC + fingerprint hooks); page.js (stakes, page fields, shop facts), consent.js, spoilers.js, reddit.js, slop.js (all bundled to dist/)
+src/background/         service worker, storage, memory, network lookups; guards.js (guard handlers, downloads, tools), activity.js (activity log, daily totals)
+src/content/            main-world.js (GPC, fingerprint hooks, clipboard and notification guards); page.js (stakes, page fields, shop facts); guard.js (links, affiliates, dates, dark patterns, wallet, Gmail, x-ray, notes); calm.js, consent.js, spoilers.js, threads.js, slop.js, feeds.js, farble.js (all bundled to dist/)
+src/report/             the weekly page
 src/offscreen/          model calls: Anthropic SDK and Chrome's Prompt API
 src/sidepanel/          the panel
 tests/                  node:test
@@ -98,6 +117,17 @@ Scout shares a design language with Source Kit: its "darkroom paper" tokens (coo
 - **On the page:** a fold leaves one capsule with Scout's mark, the reason, and **Show**. It resets page CSS so sites can't restyle it, and reads on light and dark pages. Spoilers sit under a frosted veil with an ink capsule reading **SPOILER: Title Show**. Reddit comments with near-identical wording get a small amber tag.
 - **Badge:** nothing on quiet pages, an amber dot for a note, a red `!` for a stop.
 
+## Governing it
+
+Scout runs on its own. What you decide is how much it says.
+
+- **Mode** (Shields, top): **Quiet** protects silently and speaks only to stop harm. **Balanced** (default) marks what matters on the page and says hello once per site. **Watchful** adds a block count on the icon and a note on every new site. Protection is the same in all three. Each guard also has its own switch, and changing the mode resets those to the mode's defaults.
+- **Visible where it matters:** warnings appear on the page beside what they're about. That covers the poisoned clipboard, the swapped address and the paused download, plus the date on the old story, the `$` on the paid link and the note on the tracked email.
+- **X-ray** (**Alt+Shift+X**, or **Tools → X-ray**): outlines on the page everything Scout blocked, emptied, folded or marked. Blocked ad frames, which Chrome collapses, get a placeholder of their original size so you can see what was there. Press again to put the page back.
+- **Without Scout** (Tools): reloads the site with Scout's blocking and marks off, for comparison. Restore from the banner; it also ends when you leave the site or after five minutes.
+- **Activity tab:** every intervention, warning and tool you used, in plain sentences, newest first. Routine work (trackers, ads, banners) is counted on **This week**, a page of daily totals: companies blocked most, sites with the most to block, guards that stepped in, and everything that left the browser.
+- **Updates:** Scout checks the repo's manifest once a day and shows a banner when a new version is out (`git pull`, then reload). Page rules update themselves daily.
+
 ## Known limits
 
 - Ad blocking is network-level only; uBO Lite's cosmetic filters (hiding empty ad slots) aren't included.
@@ -120,6 +150,8 @@ Scout shares a design language with Source Kit: its "darkroom paper" tokens (coo
 4. ~~Census: Reddit thread coordination scoring~~
 5. ~~Provenance: c2pa-web reading, IPTC and generator labels, original-file retry for Google-hosted images~~ (relaying Chrome's own SynthID/C2PA result has no extension API yet)
 6. ~~Ask Scout (right-click links and text), fine print reader with quote checking~~
+7. ~~Guards (clipboard, wallet, downloads, session recorders, links, notifications), page marks, x-ray, modes, activity and weekly page, evidence, citations, outlet card, opt-in fingerprint defense, forget-on-close, honest titles, feed limits~~
+8. Trace a quote to its earliest source (a paid Claude search; opt-in)
 
 ## Licenses of bundled data
 
@@ -127,6 +159,7 @@ Scout shares a design language with Source Kit: its "darkroom paper" tokens (coo
 - Tracker Radar entity map: CC BY-NC-SA 4.0 (DuckDuckGo), fine for personal, non-commercial use
 - EasyList rules: GPLv3 / CC BY-SA 3.0, via uBlock Origin Lite
 - AI-site list: CC0 (laylavish/uBlockOrigin-HUGE-AI-Blocklist)
-- autoconsent: MPL-2.0 (DuckDuckGo) · tldts: MIT · Anthropic SDK: MIT · c2pa-web: MIT (Adobe)
+- autoconsent: MPL-2.0 (DuckDuckGo) · tldts: MIT · Anthropic SDK: MIT · c2pa-web: MIT (Adobe) · jsQR: Apache-2.0
+- Honest titles: DeArrow API (sponsor.ajay.app), queried live, not bundled
 - Test images in `tests/fixtures/`: Source Kit samples, Apache-2.0
 - C2PA trust list: c2pa-org/conformance-public
