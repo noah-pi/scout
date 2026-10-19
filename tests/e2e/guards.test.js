@@ -9,6 +9,11 @@ import { launch, startServer, visit } from './harness.js';
 let server, browser, port;
 const url = (host, path) => `http://${host}:${port}${path}`;
 const layer = (page, sel) => page.evaluate((sel) => document.querySelector('scout-layer')?.shadowRoot?.querySelectorAll(sel).length ?? 0, sel);
+// Polls for a condition: ledger events and notes arrive asynchronously.
+const until = async (fn, ms = 6000) => {
+  for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 200))) if (await fn()) return true;
+  return Boolean(await fn());
+};
 const stateOf = async (host) => {
   const all = await browser.ext.session();
   return Object.values(all).find((v) => v?.host === host);
@@ -139,15 +144,14 @@ test('a document that is really a program is paused before it finishes', async (
 });
 
 test('x-ray outlines blocked ad spots; first-visit note shows; request log names companies', async () => {
-  const page = await visit(browser.context, url('www.daily-news.example', '/news'), 4000);
-  assert.equal(await layer(page, '.toast'), 1, 'first-visit note');
-  const state = await stateOf('www.daily-news.example');
-  assert.ok(state.requests.some((r) => r.list === 'ads' && /doubleclick/.test(r.host)));
-  assert.ok(state.requests.some((r) => r.list === 'trackers' && r.company));
+  const page = await visit(browser.context, url('www.daily-news.example', '/news'), 2000);
+  assert.ok(await until(async () => (await layer(page, '.toast')) === 1), 'first-visit note');
+  const logged = (test) => until(async () => ((await stateOf('www.daily-news.example'))?.requests ?? []).some(test));
+  assert.ok(await logged((r) => r.list === 'ads' && /doubleclick/.test(r.host)), 'the ad request is logged');
+  assert.ok(await logged((r) => r.list === 'trackers' && r.company), 'the tracker request is logged with its owner');
   const tabId = Number(Object.entries(await browser.ext.session()).find(([, v]) => v?.host === 'www.daily-news.example')[0].slice(4));
   await browser.ext.send({ type: 'xray', tabId, on: true });
-  await page.waitForTimeout(500);
-  assert.ok((await layer(page, '.box')) >= 2, 'ad frame and ad slot outlined');
+  assert.ok(await until(async () => (await layer(page, '.box')) >= 2), 'ad frame and ad slot outlined');
   assert.equal(await layer(page, '.legend'), 1);
   await browser.ext.send({ type: 'xray', tabId, on: false });
   await page.waitForTimeout(300);

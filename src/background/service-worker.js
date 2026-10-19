@@ -257,10 +257,15 @@ async function cachedNanoStatus() {
 
 chrome.webNavigation.onCommitted.addListener(({ tabId, frameId, url, timeStamp }) => {
   if (frameId !== 0 || !/^https?:/.test(url)) return;
-  updateTab(tabId, async () => reassess(tabId, await freshTab(url, timeStamp)));
+  updateTab(tabId, async (current) => {
+    // Already set up for this page by an event that arrived first: keep it.
+    if (current.host === new URL(url).hostname && current.committedAt >= timeStamp - 50) return reassess(tabId, current);
+    return reassess(tabId, await freshTab(url, timeStamp));
+  });
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  for (const [origin, id] of tabByOrigin) if (id === tabId) tabByOrigin.delete(origin);
   const state = await getTab(tabId);
   await guardHooks.onTabClosed(tabId, state).catch(() => {});
   dropTab(tabId);
@@ -268,12 +273,53 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 
 // Fires only for unpacked extensions, which is how Scout runs. It powers the
 // per-site tracker ledger.
-chrome.declarativeNetRequest.onRuleMatchedDebug?.addListener(({ request, rule }) => {
-  if (request.tabId < 0) return;
+// Chrome sometimes reports a page's request with no tab (tabId -1). Those
+// are attributed by the request's initiator to the tab showing that origin.
+// One can even arrive before Chrome has given the tab its new address; it
+// waits a few seconds for that page to commit.
+const tabByOrigin = new Map();
+const waiting = new Map(); // origin -> [{ at, match }]
+chrome.webNavigation.onCommitted.addListener(({ tabId, frameId, url }) => {
+  if (frameId !== 0 || !/^https?:/.test(url)) return;
+  const origin = new URL(url).origin;
+  tabByOrigin.set(origin, tabId);
+  const held = (waiting.get(origin) ?? []).filter((w) => Date.now() - w.at < 10_000);
+  waiting.delete(origin);
+  for (const { match } of held) recordMatch(tabId, match.request, match.rule, true);
+});
+
+async function tabForRequest(request) {
+  if (request.tabId >= 0) return request.tabId;
+  if (!request.initiator?.startsWith('http')) return -1;
+  // Match patterns can't carry a port, so search by host and compare origins.
+  const { protocol, hostname } = new URL(request.initiator);
+  const tabs = (await chrome.tabs.query({ url: `${protocol}//${hostname}/*` }).catch(() => [])).filter((t) => {
+    try {
+      return new URL(t.url).origin === request.initiator;
+    } catch {
+      return false;
+    }
+  });
+  const best = tabs.find((t) => t.active) ?? tabs.sort((a, b) => b.id - a.id)[0];
+  return best?.id ?? tabByOrigin.get(request.initiator) ?? -1;
+}
+
+chrome.declarativeNetRequest.onRuleMatchedDebug?.addListener(async (match) => {
+  const tabId = await tabForRequest(match.request);
+  if (tabId >= 0) return recordMatch(tabId, match.request, match.rule, match.request.tabId < 0);
+  const origin = match.request.initiator;
+  if (origin?.startsWith('http')) waiting.set(origin, [...(waiting.get(origin) ?? []), { at: Date.now(), match }].slice(-200));
+});
+
+function recordMatch(tabId, request, rule, viaInitiator) {
+  request = { ...request, tabId };
   const list = rule.rulesetId === 'easylist' ? 'ads' : rule.rulesetId === 'easyprivacy' ? 'trackers' : rule.rulesetId === '_dynamic' && rule.ruleId === 20_000 ? 'trackers' : null;
   if (!list) return;
   const url = new URL(request.url);
-  updateTab(request.tabId, async (state) => {
+  updateTab(request.tabId, async (current) => {
+    // A tab-less match can beat the page's commit event here; set the page
+    // up first so the commit finds it and keeps what was recorded.
+    const state = viaInitiator ? await atUrl(current, `${request.initiator}/`) : current;
     const tracker = trackerFor(url.hostname, await loadOwners());
     if (list === 'ads') state.ads = (state.ads ?? 0) + 1;
     else {
@@ -289,7 +335,7 @@ chrome.declarativeNetRequest.onRuleMatchedDebug?.addListener(({ request, rule })
     if (state.level === 'quiet') setBadge(request.tabId, state);
     return state;
   });
-});
+}
 
 const handlers = {
   async stakes({ stakes, page, timeOrigin }, sender) {

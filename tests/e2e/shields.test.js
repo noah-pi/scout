@@ -20,26 +20,40 @@ after(async () => {
 
 test('pausing a site lets its requests through and skips the cookie banner, then resumes', async () => {
   const url = `http://www.breaky.co.uk:${server.port}/`;
-  await visit(browser.context, url, 2500);
-  let state = await browser.ext.tabState();
-  assert.equal(Object.keys(state.trackers).length, 1);
+  // One tab on the site at a time, found by host; ledger events arrive
+  // asynchronously, so counts are waited for rather than slept on.
+  const site = async () => Object.entries(await browser.ext.session()).find(([k, v]) => k.startsWith('tab:') && v?.host === 'www.breaky.co.uk');
+  const trackers = async () => Object.keys((await site())?.[1]?.trackers ?? {}).length;
+  const until = async (fn) => {
+    for (let i = 0; i < 30 && !(await fn()); i++) await new Promise((r) => setTimeout(r, 200));
+    return fn();
+  };
 
-  const res = await browser.ext.send({ type: 'togglePause', tabId: state.tabId });
+  let page = await visit(browser.context, url, 1500);
+  if (!(await until(async () => (await trackers()) === 1))) {
+    const matched = await browser.probe.evaluate(() => chrome.declarativeNetRequest.getMatchedRules({}));
+    assert.fail(`blocked before pausing; state ${JSON.stringify((await site())?.[1])}; matched ${JSON.stringify(matched.rulesMatchedInfo.map((m) => [m.tabId, m.rule.rulesetId]))}`);
+  }
+  const tabId = Number((await site())[0].slice(4));
+  const res = await browser.ext.send({ type: 'togglePause', tabId });
   assert.deepEqual(res.value.paused, ['breaky.co.uk']);
-  const page = await visit(browser.context, url, 1500);
-  // Wait for the request itself rather than a fixed time: CI runs every
-  // browser file at once and page loads there can be slow.
-  for (let i = 0; i < 40 && !server.seen.some((r) => r.url === '/analytics.js'); i++) await page.waitForTimeout(250);
-  assert.ok(server.seen.some((r) => r.url === '/analytics.js'), 'the tracker request reached the network');
-  state = await browser.ext.tabState();
-  assert.equal(Object.keys(state.trackers).length, 0, 'nothing blocked while paused');
-  assert.equal(await page.evaluate(() => window.choice), undefined, 'banner left alone');
+  await page.close();
 
-  await browser.ext.send({ type: 'togglePause', tabId: state.tabId });
-  const again = await visit(browser.context, url, 1500);
-  // Blocked-request events reach the ledger asynchronously; wait for it.
-  for (let i = 0; i < 20 && !Object.keys((await browser.ext.tabState()).trackers).length; i++) await again.waitForTimeout(250);
-  assert.equal(Object.keys((await browser.ext.tabState()).trackers).length, 1);
+  page = await visit(browser.context, url, 1500);
+  assert.ok(await until(() => server.seen.some((r) => r.url === '/analytics.js')), 'the tracker request reached the network');
+  assert.equal(await trackers(), 0, 'nothing blocked while paused');
+  assert.equal(await page.evaluate(() => window.choice), undefined, 'banner left alone');
+  const pausedTab = Number((await site())[0].slice(4));
+  await browser.ext.send({ type: 'togglePause', tabId: pausedTab });
+  await page.close();
+
+  const hits = server.seen.filter((r) => r.url === '/analytics.js').length;
+  await visit(browser.context, url, 1500);
+  if (!(await until(async () => (await trackers()) === 1))) {
+    const matched = await browser.probe.evaluate(() => chrome.declarativeNetRequest.getMatchedRules({}));
+    const rules = await browser.probe.evaluate(() => chrome.declarativeNetRequest.getDynamicRules());
+    assert.fail(`blocked again after resuming; analytics hits ${hits} -> ${server.seen.filter((r) => r.url === '/analytics.js').length}; rules ${rules.map((r) => r.id)}; matched ${JSON.stringify(matched.rulesMatchedInfo.map((m) => [m.tabId, m.rule.rulesetId, m.rule.ruleId]))}; tabs ${JSON.stringify(Object.entries(await browser.ext.session()).filter(([k]) => k.startsWith('tab:')).map(([k, v]) => [k, v.host, Object.keys(v.trackers ?? {}).length]))}`);
+  }
 });
 
 test('a session-only key never touches local storage', async () => {
