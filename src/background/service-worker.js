@@ -207,25 +207,34 @@ function maybeEscalate(tabId, state) {
 const SHIELD_DEFAULTS = { slop: true, paused: [], calm: {}, aiLabels: true, mode: 'balanced', guards: {}, farble: [] };
 const PAUSE_RULE_BASE = 10_000;
 
+function pauseRules(domain, id) {
+  return [
+    { id, priority: 1000, action: { type: 'allowAllRequests' }, condition: { requestDomains: [domain], resourceTypes: ['main_frame', 'sub_frame'] } },
+    { id: id + 1, priority: 1000, action: { type: 'allow' }, condition: { initiatorDomains: [domain] } },
+  ];
+}
+
 async function getShields() {
   const { shields } = await chrome.storage.local.get('shields');
   return { ...SHIELD_DEFAULTS, ...shields };
 }
 
-// A paused site gets one high-priority allowAllRequests rule, which lets
-// every request from its pages through all of Scout's rulesets.
+// A paused site gets two high-priority rules: allowAllRequests for its
+// frames, and a plain allow for anything it initiates. Chrome sometimes
+// issues a page's requests without tying them to its tab (tabId -1), which
+// the first rule alone would miss.
 async function syncPauseRules(paused) {
   const existing = (await chrome.declarativeNetRequest.getDynamicRules()).filter((r) => r.id >= PAUSE_RULE_BASE && r.id < PAUSE_RULE_BASE + 9000).map((r) => r.id);
   await chrome.declarativeNetRequest.updateDynamicRules({
     removeRuleIds: existing,
-    addRules: paused.slice(0, 8999).map((domain, i) => ({
-      id: PAUSE_RULE_BASE + i,
-      priority: 1000,
-      action: { type: 'allowAllRequests' },
-      condition: { requestDomains: [domain], resourceTypes: ['main_frame', 'sub_frame'] },
-    })),
+    addRules: paused.slice(0, 4499).flatMap((domain, i) => pauseRules(domain, PAUSE_RULE_BASE + 2 * i)),
   });
+  await rulesSettle();
 }
+
+// updateDynamicRules resolves a moment before the network applies the new
+// rules; a reload in that window would still be blocked.
+const rulesSettle = () => new Promise((resolve) => setTimeout(resolve, 250));
 
 async function pageRulesSummary() {
   const { pageRules } = await chrome.storage.local.get('pageRules');

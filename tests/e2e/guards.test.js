@@ -160,7 +160,7 @@ test('x-ray outlines blocked ad spots; first-visit note shows; request log names
   await browser.ext.send({ type: 'peek', tabId, on: false });
   assert.equal((await browser.probe.evaluate(() => chrome.storage.local.get('peek'))).peek, undefined);
   const rules = await browser.probe.evaluate(() => chrome.declarativeNetRequest.getDynamicRules());
-  assert.ok(!rules.some((r) => r.id === 19_999));
+  assert.ok(!rules.some((r) => r.id === 19_990 || r.id === 19_991));
 });
 
 test('evidence: page, screenshot and a signed record land in Downloads', async () => {

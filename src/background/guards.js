@@ -12,7 +12,7 @@ import { clearActivity, count, getActivity, getHistory, logActivity } from './ac
 import * as memory from './memory.js';
 
 const REPLAY_RULE = 20_000;
-const PEEK_RULE = 19_999;
+const PEEK_RULE = 19_990; // and 19_991
 const DAY = 86_400_000;
 
 let guards = effectiveGuards({});
@@ -171,10 +171,15 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
       const domain = registrableDomain(state.host);
       if (on) {
         await chrome.declarativeNetRequest.updateDynamicRules({
-          removeRuleIds: [PEEK_RULE],
-          addRules: [{ id: PEEK_RULE, priority: 1000, action: { type: 'allowAllRequests' }, condition: { requestDomains: [domain], resourceTypes: ['main_frame', 'sub_frame'] } }],
+          removeRuleIds: [PEEK_RULE, PEEK_RULE + 1],
+          addRules: [
+            { id: PEEK_RULE, priority: 1000, action: { type: 'allowAllRequests' }, condition: { requestDomains: [domain], resourceTypes: ['main_frame', 'sub_frame'] } },
+            { id: PEEK_RULE + 1, priority: 1000, action: { type: 'allow' }, condition: { initiatorDomains: [domain] } },
+          ],
         });
         await chrome.storage.local.set({ peek: { domain, tabId, at: Date.now() } });
+        // The network applies new rules a moment after the call resolves.
+        await new Promise((resolve) => setTimeout(resolve, 250));
         chrome.alarms.create('peek-restore', { delayInMinutes: 5 });
         logActivity({ kind: 'peek', host: state.host, text: 'Showed this site without Scout, for comparison.' });
       } else {
@@ -420,8 +425,9 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
 
 async function endPeek(reload) {
   const { peek } = await chrome.storage.local.get('peek');
-  await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [PEEK_RULE] });
+  await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [PEEK_RULE, PEEK_RULE + 1] });
   await chrome.storage.local.remove('peek');
+  await new Promise((resolve) => setTimeout(resolve, 250));
   chrome.alarms.clear('peek-restore');
   if (reload && peek?.tabId) chrome.tabs.reload(peek.tabId).catch(() => {});
 }

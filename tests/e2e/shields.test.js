@@ -26,14 +26,19 @@ test('pausing a site lets its requests through and skips the cookie banner, then
 
   const res = await browser.ext.send({ type: 'togglePause', tabId: state.tabId });
   assert.deepEqual(res.value.paused, ['breaky.co.uk']);
-  const page = await visit(browser.context, url, 3000);
+  const page = await visit(browser.context, url, 1500);
+  // Wait for the request itself rather than a fixed time: CI runs every
+  // browser file at once and page loads there can be slow.
+  for (let i = 0; i < 40 && !server.seen.some((r) => r.url === '/analytics.js'); i++) await page.waitForTimeout(250);
+  assert.ok(server.seen.some((r) => r.url === '/analytics.js'), 'the tracker request reached the network');
   state = await browser.ext.tabState();
   assert.equal(Object.keys(state.trackers).length, 0, 'nothing blocked while paused');
   assert.equal(await page.evaluate(() => window.choice), undefined, 'banner left alone');
-  assert.ok(server.seen.some((r) => r.url === '/analytics.js'), 'the tracker request reached the network');
 
   await browser.ext.send({ type: 'togglePause', tabId: state.tabId });
-  await visit(browser.context, url, 2500);
+  const again = await visit(browser.context, url, 1500);
+  // Blocked-request events reach the ledger asynchronously; wait for it.
+  for (let i = 0; i < 20 && !Object.keys((await browser.ext.tabState()).trackers).length; i++) await again.waitForTimeout(250);
   assert.equal(Object.keys((await browser.ext.tabState()).trackers).length, 1);
 });
 
