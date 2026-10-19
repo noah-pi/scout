@@ -19,12 +19,19 @@ let guards = effectiveGuards({});
 const ownNames = new Map(); // download URL -> the filename Scout chose
 export const currentGuards = () => guards;
 
+// Reading settings is all a worker wake needs: Chrome keeps dynamic rules and
+// registered scripts itself, so those are written only on install and when
+// a setting changes. A lighter start loses fewer early events.
 async function loadGuards() {
   const { shields } = await chrome.storage.local.get('shields');
   guards = effectiveGuards(shields);
-  await syncReplayRule();
-  await syncFarble(shields?.farble ?? []);
 }
+chrome.runtime.onInstalled.addListener(async () => {
+  const { shields } = await chrome.storage.local.get('shields');
+  guards = effectiveGuards(shields);
+  await syncReplayRule().catch(() => {});
+  await syncFarble(shields?.farble ?? []).catch(() => {});
+});
 
 // Session recorders blocked everywhere (most are on EasyPrivacy already; this
 // catches the rest), unless you switch it off.
@@ -398,7 +405,8 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
   });
 
   // ---- Alarms: peek restore, forgetting closed sites, update check --------
-  chrome.alarms.create('update-check', { periodInMinutes: 24 * 60, delayInMinutes: 3 });
+  // Created once: re-creating an alarm on every worker wake resets its timer.
+  chrome.alarms.get('update-check').then((a) => a || chrome.alarms.create('update-check', { periodInMinutes: 24 * 60, delayInMinutes: 3 }));
   chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === 'peek-restore') endPeek(true).catch(() => {});
     if (alarm.name === 'update-check') updateCheck().catch(() => {});

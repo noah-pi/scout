@@ -93,7 +93,8 @@ async function refreshPageRules(force = false) {
   }
 }
 
-chrome.alarms.create('page-rules', { periodInMinutes: 24 * 60, delayInMinutes: 1 });
+// Created once: re-creating an alarm on every worker wake resets its timer.
+chrome.alarms.get('page-rules').then((a) => a || chrome.alarms.create('page-rules', { periodInMinutes: 24 * 60, delayInMinutes: 1 }));
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'page-rules') refreshPageRules();
 });

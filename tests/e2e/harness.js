@@ -67,8 +67,20 @@ export async function launch() {
   return { context, probe, ext, close: () => context.close() };
 }
 
+// Pages are opened, then loaded only once Chrome has registered the tab with
+// extensions. Under load, a page Playwright opens can start loading before
+// that, and Chrome then reports its requests with no tab (tabId -1) and sends
+// no rule-match events for them, which no real tab does.
 export async function visit(context, url, wait = 3000) {
+  const probe = context.pages().find((p) => p.url().startsWith('chrome-extension://'));
+  const before = probe ? await probe.evaluate(() => chrome.tabs.query({})).then((t) => t.length) : 0;
   const page = await context.newPage();
+  for (let i = 0; probe && i < 40; i++) {
+    if ((await probe.evaluate(() => chrome.tabs.query({})).then((t) => t.length)) > before) break;
+    await page.waitForTimeout(50);
+  }
+  // Listed is not quite attached; a beat more.
+  await page.waitForTimeout(150);
   await page.goto(url);
   await page.waitForTimeout(wait);
   return page;
