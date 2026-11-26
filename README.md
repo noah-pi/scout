@@ -11,11 +11,12 @@ Built for one user, loaded unpacked, never published to the Chrome Web Store.
 
 The manifest carries a fixed `key`, so the extension ID (and the memory stored under it) survives moving the folder. Export memory from the panel before uninstalling; removing the extension erases it.
 
-## What works now (v0.4)
+## What works now (v0.5)
 
 | Piece | What it does |
 |---|---|
-| **Shield** | Blocks trackers with EasyPrivacy: about 8,200 block rules covering roughly 47,000 domains, plus about 830 allow rules that keep sites from breaking. The rules come from uBlock Origin Lite's conversion to Chrome's rule format. A per-page ledger names the owner of each blocked tracker from DuckDuckGo's Tracker Radar (19,000 companies). It relies on `onRuleMatchedDebug`, which only fires for unpacked extensions. When the panel opens, Chrome's own count of blocks on the tab backfills anything the ledger missed. |
+| **Shield** | Blocks trackers with EasyPrivacy: about 8,200 block rules covering roughly 47,000 domains, plus about 830 allow rules that keep sites from breaking. The rules come from uBlock Origin Lite's conversion to Chrome's rule format. A per-page ledger names the owner of each blocked tracker from DuckDuckGo's Tracker Radar (19,000 companies). It relies on `onRuleMatchedDebug`, which only fires for unpacked extensions. Chrome now and then blocks a request without sending that event, so a second witness listens to `webRequest` for requests that fail as `ERR_BLOCKED_BY_CLIENT`: if no rule-match event follows within a second, Scout asks Chrome which of its rules matched (`testMatchOutcome`) and records that. Blocks by other extensions match none of Scout's rules and aren't counted. When the panel opens, Chrome's own count of blocks on the tab backfills anything still missed. |
+| **Stand-ins** | Some pages wait on the tracker they load (`ga()`, `googletag`, `apstag`) and break when it's blocked. For Google Analytics (analytics.js, ga.js), Google Tag Manager and gtag, Scorecard Research, Chartbeat, Google's ad tag and Amazon's ad tag, Scout serves a do-nothing copy from the extension instead, from uBlock Origin's resources. uBO Lite's own 20 redirect rules for EasyPrivacy and EasyList are kept too. The tracker never loads, and it's counted as blocked. Served with `use_dynamic_url`, so pages can't probe for them by a fixed address. |
 | **Ads** | EasyList, from uBO Lite's DNR build: about 3,200 block rules and 500 allow rules. Counted in the panel next to trackers. |
 | **Clean links** | Strips tracking parameters (`utm_*`, `fbclid`, `gclid`, `msclkid`, `mc_eid`, `igshid` and about twenty more) from pages you open. |
 | **Calm layer** | Switches in Shields → Calm: hide YouTube Shorts, Google's AI Overviews (matched by their heading in ten languages), chat bubbles, newsletter and notification pop-ups, and stop videos that play by themselves (not on video sites; only your own click or key press starts one). The panel counts what each rule hid on the page, so a rule that has stopped matching a site's markup shows up as missing. Google's AI Overview is found by its heading, then folded up to the first real result, so it survives Google renaming its classes. |
@@ -32,7 +33,8 @@ The manifest carries a fixed `key`, so the extension ID (and the memory stored u
 | **Investigate** | A button in the panel. Sends Claude the page's fields plus its visible text (redacted, capped at 6,000 characters) at high effort and shows a verdict, a short summary and reasons. |
 | **Census (Reddit, X, YouTube)** | Reads the thread already on screen (new and old Reddit) and reports patterns across accounts: near-identical wording from different accounts (marked on the page as "similar wording"), Reddit's generated usernames, bursts of posting. On request it looks up public profiles through your own session (at most 40, slowly, cached for a week) for account age, same-week creation and karma. **Analyze pattern** sends the thread to Opus with usernames replaced by A1, A2…. Scout describes the thread; it never labels one person a bot. |
 | **Provenance** | Right-click any image → **Check image with Scout**. Reads C2PA Content Credentials with Adobe's c2pa-web (in the offscreen document; the 9 MB WASM loads only on first use), plus unsigned labels: IPTC digital source type, Stable Diffusion and ComfyUI settings in PNGs, generator names, and what looks like China's AIGC label. Checks the signer against the official C2PA trust list (32 certificates: Google, Adobe, DigiCert, SSL.com, Huawei, vivo, Xiaomi and others; refreshed monthly), and keeps "unknown signer" separate from "altered". Tells apart an edited picture from an edited credential. For Google-hosted images it also checks the original-size file, since the displayed copy is stripped. "Nothing found" is said as exactly that. |
-| **Ask Scout** | Right-click a link → **Check this link with Scout**: disguised destinations (`brand.com@elsewhere`), bare IPs, shorteners, lookalikes, punycode, domain age. Local, no model call. Select text → **Is this a scam? Ask Scout**: Haiku judges the message (redacted). |
+| **IP-logging links** | Links that exist to record who opens them (Grabify and its decoy domains, IPLogger and its short domains, Blasze, WhatsTheirIP, Canarytokens) never load unseen. Chrome sends the tab to a Scout stop page before any request leaves, wherever the link came from: a page, an email app, a paste. **Open it anyway** allows that site for the rest of the session. The list is partial; Grabify rotates through many innocent-looking domains. |
+| **Ask Scout** | Right-click a link → **Check this link with Scout**: disguised destinations (`brand.com@elsewhere`), bare IPs, IP loggers, shorteners, lookalikes, punycode, domain age. Local, no model call. Select text → **Is this a scam? Ask Scout**: Haiku judges the message (redacted). |
 | **Fine print** | **Read the fine print** finds the page's privacy policy and terms (in several languages), fetches them without cookies, and has Haiku pull out up to eight points: data selling, AI training, tracking, arbitration, auto-renewal, retention, deletion, opt-out. Every point carries a verbatim quote, and Scout checks each quote against the fetched text; one it can't find is marked so. |
 | **Spoiler shield** | List shows and films with how far you've watched. Bare mentions (a tag, a nav link, a "Severance S2" chip) are left alone. Any real passage that mentions one (or an alias, such as a character's name) is dimmed while Haiku judges it against your progress. Clean passages come straight back. A spoiler veils the whole article, post or comment it sits in, behind one label: a pill on most boxes, a short one on narrow cards, a tooltip on inline text, and a label that follows you down long articles. Verdicts are cached for 30 days. With cloud checks off, or in "hide every mention" mode, every mention stays hidden. |
 | **Clipboard guard** | Fake CAPTCHA pages ("press Win+R, then Ctrl+V") put a malware command on your clipboard. Scout watches every way a page can write the clipboard. On a page that talks like a CAPTCHA, the command never lands, and a warning appears on the page. Elsewhere (an install page's copy button) it goes through and Scout notes it. A blocked command stops the page regardless of stakes. |
@@ -48,7 +50,10 @@ The manifest carries a fixed `key`, so the extension ID (and the memory stored u
 | **QR codes** | **Check image with Scout** also decodes QR codes and runs their links through the lookalike checks. |
 | **Who runs this?** | Owner, parent company, country, founding year, kind and stated leaning from Wikidata, with a note when it is listed as state media. On request, or automatically on articles if you opt in. Sends the domain only. |
 | **Cite + archive** | Asks the Internet Archive for a fresh copy and copies a citation with the archived link. |
-| **Save evidence** | The page's HTML, a screenshot and a record of both files' SHA-256 hashes, signed with an ECDSA key that never leaves this browser, saved to `Downloads/Scout evidence/`. |
+| **Save evidence** | Saved to `Downloads/Scout evidence/`: the page's HTML as rendered, a screenshot, and the same two as `page.wacz`, a WACZ 1.1.1 web archive that ReplayWeb.page opens (checked with Webrecorder's own validator). `evidence.json` records every file's SHA-256 and is signed with an ECDSA key that never leaves this browser. `evidence.tsr` is an RFC 3161 timestamp over that record from DigiCert's public timestamp authority (FreeTSA if DigiCert doesn't answer), so anyone can check when it existed with `openssl ts -verify`, without trusting you or Scout. Only the record's hash goes to the authority. `HOW-TO-VERIFY.txt` gives the commands. |
+| **Watched stories** | **Cite + archive** also watches the story, and **Watch for edits** (Tools) does it on its own. For 90 days Scout fetches each one once a day without cookies and compares the headline, summary, byline and body with the copy it kept. Edited and removed paragraphs and vanished quotes are named in the Activity tab, with a notification. An edit whose page kept its updated date is marked as one the page didn't admit. A paywall or a redesign reads as "couldn't compare", never as edits. |
+| **Since first archived** | Tools: the Internet Archive's earliest copy of the page (the raw capture, not the archive's wrapper) against the page now, paragraph by paragraph. Sends the page's address to the archive. |
+| **Research mode** | One switch in Shields, for reading up on people who may check who visits: fingerprint defense on every site, sites forgotten when you close them, no Referer on cross-site requests, no link prefetching or hyperlink-auditing pings, and WebRTC kept to proxied routes so it can't reveal your real IP behind a VPN. Turning it off hands each Chrome setting back. Sites still see your IP address; the panel says so, and says when another extension or a policy holds one of the settings. |
 | **Fingerprint defense** | Per site, opt in: canvas and audio readings get a faint per-visit jitter and the GPU reads as generic, so a tracker's fingerprint changes between visits. Can break sites, which is why it's per site. |
 | **Forget on close** | Opt in: a minute after a site's last tab closes, its cookies and storage are cleared. Trusted sites are kept. |
 | **Honest titles (YouTube)** | Opt in: DeArrow's crowd-sourced titles replace clickbait; the original stays in the tooltip. Sends a four-character hash prefix per video, not the video ID. |
@@ -61,15 +66,18 @@ The manifest carries a fixed `key`, so the extension ID (and the memory stored u
 
 ```
 manifest.json
-rules/                  DNR rulesets: gpc, easyprivacy (block), easyprivacy-allow (generated)
+rules/                  DNR rulesets: gpc, easyprivacy and easylist (block, allow and redirect; generated), surrogates (Scout's own stand-in redirects)
+web_accessible_resources/  stand-in scripts from uBlock Origin (GPLv3)
 data/entities.json      tracker domain → owning company (generated)
 dist/                   bundled dependencies: autoconsent, tldts (generated, committed)
 scripts/update-lists.mjs  refreshes rules/ and data/ from upstream (needs network)
 scripts/build.mjs         rebuilds dist/ from node_modules (offline)
+scripts/rule-canary.mjs   nightly check that page rules still match live sites
 src/shared/             pure logic: ladder, tripwire, trust, tracker naming (unit-tested)
 src/background/         service worker, storage, memory, network lookups; guards.js (guard handlers, downloads, tools), activity.js (activity log, daily totals)
 src/content/            main-world.js (GPC, fingerprint hooks, clipboard and notification guards); page.js (stakes, page fields, shop facts); guard.js (links, affiliates, dates, dark patterns, wallet, Gmail, x-ray, notes); calm.js, consent.js, spoilers.js, threads.js, slop.js, feeds.js, farble.js (all bundled to dist/)
 src/report/             the weekly page
+src/stop/               the stop page for IP-logging links
 src/offscreen/          model calls: Anthropic SDK and Chrome's Prompt API
 src/sidepanel/          the panel
 tests/                  node:test
@@ -101,6 +109,8 @@ What the calm layer hides lives in `data/page-rules.json`. A copy ships with Sco
 
 When a site changes its markup and something reappears, edit `data/page-rules.json` on GitHub (bump `updated`), commit, and every install picks it up within a day, or at once with **Check for rule updates**.
 
+Two things notice when that happens. In the browser, each page load on a site a rule is written for (YouTube for Shorts, Google search for AI Overviews, Reddit threads for Census) records whether the rule found anything; ten misses in a row over two weeks shows the rule in the Calm section as probably broken. On GitHub, a nightly job (`scripts/rule-canary.mjs`) loads live pages and opens one issue, labeled `page-rules`, when a rule matches nothing, then closes it when everything matches again. A bot check or a failed load counts as blocked, which says nothing about the rule.
+
 ## Design rules
 
 - **Local first.** Tier 0 (lists, rules) and Tier 1 (heuristics) run everywhere. Tier 2 is Gemini Nano on the device. Tiers 3 and 4 are cloud models, called with your own key.
@@ -131,7 +141,6 @@ Scout runs on its own. What you decide is how much it says.
 ## Known limits
 
 - Ad blocking is network-level only; uBO Lite's cosmetic filters (hiding empty ad slots) aren't included.
-- uBO's 13 redirect rules are dropped, since they depend on uBO's own stub scripts. A few trackers that uBO would neuter therefore load.
 - If Chrome has idled the service worker, early tracker events on a page can arrive before Scout is listening. They're still blocked, and the panel counts them as "blocked before Scout could name them."
 - Large data files load on first use. Bundling them into the service worker kept Chrome from delivering navigation and rule-match events to it.
 - Once, in testing, a page opened in the first moment after install showed no blocks at all, which suggests Chrome hadn't loaded the rules yet. It didn't recur.
@@ -141,6 +150,9 @@ Scout runs on its own. What you decide is how much it says.
 - SynthID has no public API, and Chrome gives extensions no way to read its own SynthID check; Scout points to Google's tool instead.
 - `'wasm-unsafe-eval'` is in the extension's CSP so c2pa-web can compile its WASM. It permits WebAssembly only, not JavaScript eval.
 - Chrome gives extensions no access to TLS certificates, so trust is tied to domain registration rather than the certificate.
+- Evidence captures the page's HTML as rendered and a screenshot of the visible part. Images and styles from other servers aren't inside the archive. Scout checks that a timestamp answers its own hash and nonce; the authority's signature is checked with openssl, not in the browser. The evidence signature is Scout's own format, not WACZ's signing spec.
+- Watched stories are fetched without cookies, so a story behind a paywall may only be comparable as far as its free text goes.
+- The stop page for IP-logging links is a web-accessible page, so a site could tell that Scout is installed by probing for it.
 
 ## Roadmap
 
@@ -151,13 +163,15 @@ Scout runs on its own. What you decide is how much it says.
 5. ~~Provenance: c2pa-web reading, IPTC and generator labels, original-file retry for Google-hosted images~~ (relaying Chrome's own SynthID/C2PA result has no extension API yet)
 6. ~~Ask Scout (right-click links and text), fine print reader with quote checking~~
 7. ~~Guards (clipboard, wallet, downloads, session recorders, links, notifications), page marks, x-ray, modes, activity and weekly page, evidence, citations, outlet card, opt-in fingerprint defense, forget-on-close, honest titles, feed limits~~
-8. Trace a quote to its earliest source (a paid Claude search; opt-in)
+8. ~~v0.5: a second witness for the ledger, stand-ins, IP-logging links, research mode, WACZ and RFC 3161 evidence, watched stories, rule-rot checks~~
+9. Trace a quote to its earliest source (a paid Claude search; opt-in)
 
 ## Licenses of bundled data
 
 - EasyPrivacy rules: GPLv3 / CC BY-SA 3.0 (EasyList authors), via uBlock Origin Lite (GPLv3)
 - Tracker Radar entity map: CC BY-NC-SA 4.0 (DuckDuckGo), fine for personal, non-commercial use
 - EasyList rules: GPLv3 / CC BY-SA 3.0, via uBlock Origin Lite
+- Stand-in scripts in `web_accessible_resources/`: GPLv3 (uBlock Origin, Raymond Hill)
 - AI-site list: CC0 (laylavish/uBlockOrigin-HUGE-AI-Blocklist)
 - autoconsent: MPL-2.0 (DuckDuckGo) · tldts: MIT · Anthropic SDK: MIT · c2pa-web: MIT (Adobe) · jsQR: Apache-2.0
 - Honest titles: DeArrow API (sponsor.ajay.app), queried live, not bundled

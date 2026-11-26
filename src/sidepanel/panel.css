@@ -418,3 +418,7 @@ form.form .btn { margin: 2px 10px 10px auto; }
 .footnote.warn { color: var(--warn); }
 .footnote.warn a { color: inherit; }
 small.secondary.warn { color: var(--warn); }
+#watched-list a { color: var(--text); text-decoration: none; font-weight: 600; }
+#watched-list a:hover { text-decoration: underline; }
+#watched-list details { margin-top: 6px; font-size: 12px; }
+#watched-list details p { margin: 4px 0; }

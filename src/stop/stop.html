@@ -15,7 +15,7 @@
     .stop h1 { margin: 10px 0 10px; font-size: 24px; letter-spacing: -.3px; color: var(--danger); }
     .stop p { line-height: 1.5; margin: 0 0 10px; }
     .stop code { display: block; margin: 14px 0 18px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--surface2); font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--text-dim); }
-    .stop .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .stop .choices { display: flex; gap: 10px; flex-wrap: wrap; }
   </style>
 </head>
 <body>
@@ -25,7 +25,7 @@
     <p id="what">It goes through an IP-logging service.</p>
     <p>Opening it gives whoever made the link your IP address, your rough location, your browser and device, and the time. People send these to find out who a reporter, a source or an anonymous account really is.</p>
     <code id="url"></code>
-    <div class="row">
+    <div class="choices">
       <button type="button" class="btn primary" id="back">Go back</button>
       <button type="button" class="btn danger" id="open">Open it anyway</button>
     </div>

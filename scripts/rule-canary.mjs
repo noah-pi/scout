@@ -31,10 +31,10 @@ export const CHECKS = [
 // whether any short element's text is one of the rule's headings.
 export async function probe(page, check) {
   try {
-    const res = await page.goto(check.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    let res = await page.goto(check.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     if (check.follow) {
       const next = await page.getAttribute(check.follow, 'href').catch(() => null);
-      if (next) await page.goto(new URL(next, page.url()).href, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      if (next) res = await page.goto(new URL(next, page.url()).href, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     }
     await page.waitForTimeout(check.wait ?? 6000);
     const status = res?.status() ?? 0;

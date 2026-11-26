@@ -71,3 +71,7 @@ test('trackerFor names the company behind a host', () => {
   assert.equal(trackerFor('px.ads.criteo.com', owners).company, 'Criteo');
   assert.deepEqual(trackerFor('cdn.unknown-tracker.example', owners), { domain: 'unknown-tracker.example', company: 'unknown-tracker.example' });
 });
+
+test('package.json and the manifest carry the same version', () => {
+  assert.equal(read('../package.json').version, read('../manifest.json').version);
+});
