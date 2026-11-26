@@ -6,22 +6,25 @@ import { chromium } from 'playwright';
 
 const EXTENSION = fileURLToPath(new URL('../..', import.meta.url));
 
-// routes: { '/path': html | (req, body) => ({ status, headers, body }) }
+// routes: { '/path': html | (req, body, raw) => ({ status, headers, body }) }
 export function startServer(routes) {
   const seen = [];
   const server = http.createServer((req, res) => {
-    let body = '';
-    req.on('data', (c) => (body += c));
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
     req.on('end', () => {
+      const raw = Buffer.concat(chunks);
+      const body = raw.toString();
       seen.push({ url: req.url, method: req.method, headers: req.headers, body });
       const path = req.url.split('?')[0];
-      const route = routes[path];
+      // A key ending in * matches any path that starts with it.
+      const route = routes[path] ?? Object.entries(routes).find(([k]) => k.endsWith('*') && path.startsWith(k.slice(0, -1)))?.[1];
       if (req.method === 'OPTIONS') {
         res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' });
         return res.end();
       }
       if (typeof route === 'function') {
-        const out = route(req, body);
+        const out = route(req, body, raw);
         res.writeHead(out.status ?? 200, { 'access-control-allow-origin': '*', ...(out.headers ?? {}) });
         return res.end(out.body);
       }

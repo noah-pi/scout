@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scout stopped this link</title>
+  <link rel="stylesheet" href="../sidepanel/panel.css">
+  <style>
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); margin: 0; }
+    .stop { max-width: 560px; margin: 12vh auto 40px; padding: 0 16px; }
+    .stop .kicker { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 800; letter-spacing: 1.8px; text-transform: uppercase; color: var(--danger); }
+    .stop svg { width: 14px; height: 14px; }
+    .stop svg path { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+    .stop svg circle { fill: currentColor; }
+    .stop h1 { margin: 10px 0 10px; font-size: 24px; letter-spacing: -.3px; color: var(--danger); }
+    .stop p { line-height: 1.5; margin: 0 0 10px; }
+    .stop code { display: block; margin: 14px 0 18px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--surface2); font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--text-dim); }
+    .stop .choices { display: flex; gap: 10px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <main class="stop">
+    <div class="kicker"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15.9 4.1A8.4 8.4 0 1 0 18.4 10"/><circle cx="10" cy="10" r="3.2"/></svg> Scout stopped this link</div>
+    <h1>This link records who opens it</h1>
+    <p id="what">It goes through an IP-logging service.</p>
+    <p>Opening it gives whoever made the link your IP address, your rough location, your browser and device, and the time. People send these to find out who a reporter, a source or an anonymous account really is.</p>
+    <code id="url"></code>
+    <div class="choices">
+      <button type="button" class="btn primary" id="back">Go back</button>
+      <button type="button" class="btn danger" id="open">Open it anyway</button>
+    </div>
+    <p class="footnote" id="status" role="status"></p>
+  </main>
+  <script type="module" src="stop.js"></script>
+</body>
+</html>

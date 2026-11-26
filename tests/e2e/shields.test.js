@@ -24,20 +24,17 @@ test('pausing a site lets its requests through and skips the cookie banner, then
   // asynchronously, so counts are waited for rather than slept on.
   const site = async () => Object.entries(await browser.ext.session()).find(([k, v]) => k.startsWith('tab:') && v?.host === 'www.breaky.co.uk');
   const trackers = async () => Object.keys((await site())?.[1]?.trackers ?? {}).length;
-  // Blocked means Scout's ledger saw it, or Chrome's own record shows the
-  // block. Chrome occasionally reports a test page's requests with no tab
-  // and sends no event for them; the block itself still happens.
-  const blockedSince = async (since) =>
-    (await trackers()) === 1 ||
-    (await browser.probe.evaluate((t) => chrome.declarativeNetRequest.getMatchedRules({ minTimeStamp: t }), since)).rulesMatchedInfo.some((m) => m.rule.rulesetId === 'easyprivacy');
+  // Blocked means Scout's ledger counted it. When Chrome files a request
+  // under no tab and sends no rule-match event, Scout's webRequest witness
+  // still counts it, so the ledger is held to the block.
+  const blockedSince = async () => (await trackers()) === 1;
   const until = async (fn) => {
     for (let i = 0; i < 30 && !(await fn()); i++) await new Promise((r) => setTimeout(r, 200));
     return fn();
   };
 
-  let t0 = Date.now();
   let page = await visit(browser.context, url, 1500);
-  if (!(await until(() => blockedSince(t0)))) {
+  if (!(await until(() => blockedSince()))) {
     const matched = await browser.probe.evaluate(() => chrome.declarativeNetRequest.getMatchedRules({}));
     assert.fail(`blocked before pausing; state ${JSON.stringify((await site())?.[1])}; matched ${JSON.stringify(matched.rulesMatchedInfo.map((m) => [m.tabId, m.rule.rulesetId]))}`);
   }
@@ -55,9 +52,8 @@ test('pausing a site lets its requests through and skips the cookie banner, then
   await page.close();
 
   const hits = server.seen.filter((r) => r.url === '/analytics.js').length;
-  t0 = Date.now();
   await visit(browser.context, url, 1500);
-  assert.ok(await until(() => blockedSince(t0)), 'blocked again after resuming');
+  assert.ok(await until(() => blockedSince()), 'blocked again after resuming');
   assert.equal(server.seen.filter((r) => r.url === '/analytics.js').length, hits, 'and the request never left');
 });
 

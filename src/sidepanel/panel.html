@@ -87,6 +87,7 @@
         <li class="label-row" id="unwrapped" hidden><span class="n">Links unwrapped</span><span class="v"></span></li>
         <li class="label-row" id="email" hidden><span class="n">Tracked emails</span><span class="v"></span></li>
         <li class="label-row" id="farbled" hidden><span class="n">Fingerprint defense</span><span class="v ok">On</span></li>
+        <li class="label-row" id="research-row" hidden><span class="n">Research mode</span><span class="v ok">On</span></li>
       </ul>
     </section>
 
@@ -98,7 +99,10 @@
         <button type="button" class="btn secondary small" id="outlet-lookup">Who runs this?</button>
         <button type="button" class="btn secondary small" id="cite">Cite + archive</button>
         <button type="button" class="btn secondary small" id="evidence">Save evidence</button>
+        <button type="button" class="btn secondary small" id="watch" aria-pressed="false">Watch for edits</button>
+        <button type="button" class="btn secondary small" id="earliest-check">Since first archived</button>
       </div>
+      <div class="card" id="earliest" hidden></div>
       <p class="footnote" id="tool-status" role="status"></p>
     </section>
 
@@ -109,6 +113,15 @@
 
   <!-- ACTIVITY: what Scout did, in plain sentences, newest first. -->
   <main data-panel="activity" hidden>
+    <section id="watched-section">
+      <div class="activity-head">
+        <h3 class="group-title">Watched stories</h3>
+        <span class="grow"></span>
+        <button type="button" class="btn link" id="watch-check">Check now</button>
+      </div>
+      <ul class="group" id="watched-list"></ul>
+      <p class="footnote">Stories you cite, or choose to watch, are fetched again once a day for 90 days, without cookies, and compared with the copy Scout kept. A change the page's updated date doesn't admit is marked.</p>
+    </section>
     <section>
       <div class="activity-head">
         <h3 class="group-title">What Scout did</h3>
@@ -139,6 +152,14 @@
     </section>
 
     <section>
+      <h3 class="group-title">Research mode</h3>
+      <ul class="group">
+        <li><label class="row switch"><span>Research mode<small>For reading up on people who may check who visits. Fingerprint defense on every site, sites forgotten when you close them, no Referer sent to other sites, no link prefetching, and WebRTC kept from revealing your real IP behind a VPN.</small></span><input type="checkbox" role="switch" id="research"></label></li>
+      </ul>
+      <p class="footnote" id="research-status">Sites still see your IP address. To hide it, use a VPN or Tor as well.</p>
+    </section>
+
+    <section>
       <h3 class="group-title">Guards</h3>
       <ul class="group" id="guard-protective"></ul>
       <p class="footnote">On in every mode. Each acts only when something goes wrong, and tells you on the page when it does.</p>
@@ -163,6 +184,7 @@
         <li><label class="row switch"><span>Fold AI-heavy search results</span><input type="checkbox" role="switch" id="slop-enabled"></label></li>
       </ul>
       <p class="footnote" id="rules-status"></p>
+      <p class="footnote warn" id="rule-rot" hidden></p>
       <div class="footer-actions"><button type="button" class="btn ghost small" id="rules-refresh">Check for rule updates</button></div>
     </section>
 

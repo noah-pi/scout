@@ -86,6 +86,7 @@ async function render() {
   renderTools(state, tab);
   renderGuards(state, tab, site);
   renderModeAndGuards(state.guards, shields, site);
+  renderResearch(shields, state.research);
   renderActivity();
   renderOutlet(tab.outlet);
 
@@ -123,6 +124,7 @@ async function render() {
   renderSpoilers(tab.spoilersHidden ?? 0);
   renderShields(tab, site, shields, trusted, extensions);
   renderCalm(tab, shields, pageRules);
+  renderRot(state.rot ?? []);
 
   $('chrome').textContent =
     protection.safeBrowsing === false
@@ -444,6 +446,19 @@ function renderCalm(tab, shields, rules) {
     : `Rules from ${rules.updated ?? 'unknown'}, checked ${when}. They update daily and can only hide things.`;
 }
 
+// Rules that keep missing on the sites they're written for: the site has
+// probably changed its markup. The fix is an edit to data/page-rules.json.
+function renderRot(stale) {
+  const box = $('rule-rot');
+  box.hidden = !stale.length;
+  if (!stale.length) return;
+  const since = (r) => (r.lastHit ? `last matched ${new Date(r.lastHit).toLocaleDateString()}` : 'never matched');
+  box.replaceChildren(
+    `May have stopped working: ${stale.map((r) => `${r.label} (${since(r)}, missed ${r.misses} visits in a row)`).join('; ')}. The site has probably changed its markup. `,
+    Object.assign(el('a', '', 'Edit the page rules'), { href: 'https://github.com/noah-pi/scout/edit/main/data/page-rules.json', target: '_blank', rel: 'noopener' }),
+  );
+}
+
 $('ai-labels').onchange = (e) => ask({ type: 'saveShields', changes: { aiLabels: e.target.checked } }).then(render);
 $('slop-enabled').onchange = (e) => ask({ type: 'saveShields', changes: { slop: e.target.checked } }).then(render);
 $('pause').onclick = async () => {
@@ -512,11 +527,44 @@ $('peek-restore').onclick = async (e) => busy(e.currentTarget, async () => ask({
 $('check-update').onclick = (e) => busy(e.currentTarget, () => ask({ type: 'checkUpdate' }), 'tool-status');
 
 // ---- Tools -------------------------------------------------------------------
-function renderTools({ xray, peek }, tab) {
+function renderTools({ xray, peek, watching }, tab) {
   $('tools').hidden = !tab.host;
   $('xray').setAttribute('aria-pressed', String(Boolean(xray)));
   $('xray').textContent = xray ? 'X-ray on' : 'X-ray';
   $('peek').disabled = Boolean(peek);
+  $('watch').setAttribute('aria-pressed', String(Boolean(watching)));
+  $('watch').textContent = watching ? 'Watching for edits' : 'Watch for edits';
+  renderEarliest(tab.earliest);
+}
+
+// One change record as lines a person can read: before and after.
+function changeLines(changes) {
+  const out = [];
+  const cut = (t) => (t.length > 220 ? `${t.slice(0, 220)}…` : t);
+  for (const c of changes) {
+    if (['headline', 'description', 'byline'].includes(c.field)) out.push(`${{ headline: 'Headline', description: 'Summary', byline: 'Byline' }[c.field]}: “${cut(c.before)}” → “${cut(c.after)}”`);
+    if (c.field === 'body') {
+      for (const e of c.edited) out.push(`Edited: “${cut(e.before)}” → “${cut(e.after)}”`);
+      for (const r of c.removed) out.push(`Removed: “${cut(r)}”`);
+      for (const a of c.added) out.push(`Added: “${cut(a)}”`);
+    }
+    if (c.field === 'quotes') for (const q of c.removed) out.push(`Quote gone: “${cut(q)}”`);
+  }
+  return out;
+}
+
+function renderEarliest(e) {
+  const box = $('earliest');
+  if (!e) return (box.hidden = true);
+  if (!e.found) return card(box, { lead: 'No archived copy', body: ['The Internet Archive has no earlier copy of this page.'] });
+  const when = new Date(e.at).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+  card(box, {
+    lead: !e.readable ? 'Couldn’t compare' : e.changes.length ? `Changed since ${when}` : `Unchanged since ${when}`,
+    tone: e.readable && e.changes.length ? 'mixed' : '',
+    body: [e.sentence],
+    list: e.readable ? changeLines(e.changes).slice(0, 12) : [],
+    meta: `Earliest copy in the Internet Archive: ${e.archived}`,
+  });
 }
 const toolStatus = (text) => ($('tool-status').textContent = text);
 $('xray').onclick = async (e) => busy(e.currentTarget, async () => ask({ type: 'xray', tabId: await activeTabId() }), 'tool-status');
@@ -527,13 +575,34 @@ $('peek').onclick = async (e) => busy(e.currentTarget, async () => {
 $('outlet-lookup').onclick = async (e) => busy(e.currentTarget, async () => ask({ type: 'outlet', tabId: await activeTabId() }), 'tool-status');
 $('cite').onclick = async (e) => busy(e.currentTarget, async () => {
   toolStatus('Asking the Internet Archive for a fresh copy. This can take half a minute.');
-  const { text, archived } = await ask({ type: 'cite', tabId: await activeTabId() });
+  const { text, archived, watching } = await ask({ type: 'cite', tabId: await activeTabId() });
   await navigator.clipboard.writeText(text);
-  toolStatus(archived ? `Copied, with the archived copy: ${text}` : `Copied (the archive didn't answer, so no archived link): ${text}`);
+  const watch = watching ? ' Scout is watching it for edits.' : '';
+  toolStatus(archived ? `Copied, with the archived copy: ${text}${watch}` : `Copied (the archive didn't answer, so no archived link): ${text}${watch}`);
 }, 'tool-status');
+$('watch').onclick = async (e) => busy(e.currentTarget, async () => {
+  const tabId = await activeTabId();
+  const { watching, tab } = await ask({ type: 'panelState', tabId });
+  if (watching) {
+    await ask({ type: 'unwatchStory', url: tab.url });
+    toolStatus('Stopped watching this story.');
+  } else {
+    await ask({ type: 'watchStory', tabId });
+    toolStatus('Watching this story for 90 days. Scout fetches it once a day without cookies and tells you if the words change.');
+  }
+}, 'tool-status');
+$('earliest-check').onclick = async (e) => busy(e.currentTarget, async () => {
+  toolStatus('Asking the Internet Archive for its earliest copy and comparing it with the page now.');
+  await ask({ type: 'compareEarliest', tabId: await activeTabId() });
+  toolStatus('');
+}, 'tool-status');
+$('watch-check').onclick = (e) => busy(e.currentTarget, () => ask({ type: 'checkWatched', force: true }), 'tool-status');
+
 $('evidence').onclick = async (e) => busy(e.currentTarget, async () => {
-  const { folder, hashes } = await ask({ type: 'saveEvidence', tabId: await activeTabId() });
-  toolStatus(`Saved to Downloads/${folder}: the page, a screenshot, and a signed record (page ${hashes['page.html'].slice(0, 10)}…).`);
+  toolStatus('Saving the page, a screenshot and a web archive, and asking a timestamp authority to witness the record.');
+  const { folder, hashes, timestamp } = await ask({ type: 'saveEvidence', tabId: await activeTabId() });
+  const when = timestamp.at ? `timestamped by ${timestamp.service} at ${new Date(timestamp.at).toLocaleString()}` : 'not timestamped (no timestamp authority answered)';
+  toolStatus(`Saved to Downloads/${folder}: the page, a screenshot, a WACZ archive and a signed record, ${when}. Record ${hashes['page.wacz'].slice(0, 10)}…; HOW-TO-VERIFY.txt says how anyone can check it.`);
 }, 'tool-status');
 
 function renderOutlet(o) {
@@ -572,7 +641,7 @@ function renderGuards({ shields }, tab, site) {
   row('affiliates', g.affiliates?.total, `${g.affiliates?.total} · ${networks.slice(0, 3).join(', ')}`);
   row('unwrapped', g.unwrapped, String(g.unwrapped));
   row('email', g.email?.messages, `${g.email?.messages}${g.email?.names?.length ? ` · ${g.email.names.slice(0, 3).join(', ')}` : ''}`, 'warn');
-  $('farbled').hidden = !(site && (shields.farble ?? []).includes(site));
+  $('farbled').hidden = !((site && (shields.farble ?? []).includes(site)) || shields.research);
 }
 
 // ---- Shields: mode and guards ----------------------------------------------
@@ -584,6 +653,7 @@ const GUARDS = {
     ['downloads', 'Download check', 'Pauses disguised files and programs from pages Scout warned about.'],
     ['notifications', 'Hold back notification prompts', 'Only prompts that arrive before you\'ve clicked anything.'],
     ['replayBlock', 'Block session recording', 'Hotjar, FullStory, Clarity and others that replay your clicks and typing.'],
+    ['ipLoggers', 'Stop IP-logging links', 'Grabify, IPLogger and others that record who opens a link. You can still open one.'],
   ],
   visible: [
     ['toasts', 'First-visit notes', 'A small card on arrival: what Scout handled.', 'select'],
@@ -644,9 +714,20 @@ function renderModeAndGuards(guards, shields, site) {
     if ($(id).contains(document.activeElement)) continue; // don't redraw under your cursor
     $(id).replaceChildren(...GUARDS[group].map((g) => guardRow(g, guards[g[0]])));
   }
-  $('farble').checked = Boolean(site && (shields.farble ?? []).includes(site));
-  $('farble').disabled = !site;
+  $('farble').checked = Boolean(site && (shields.farble ?? []).includes(site)) || Boolean(shields.research);
+  $('farble').disabled = !site || Boolean(shields.research);
+  $('research').checked = Boolean(shields.research);
 }
+
+// Research mode: one switch; the worker applies its parts. The status line
+// says if another extension or a policy holds one of the Chrome settings.
+function renderResearch(shields, status) {
+  $('research-row').hidden = !shields.research;
+  const base = 'Sites still see your IP address. To hide it, use a VPN or Tor as well.';
+  const held = Object.entries(status ?? {}).filter(([, s]) => s?.blocked).map(([k]) => ({ webrtc: 'WebRTC', prediction: 'prefetching', auditing: 'link pings' })[k]);
+  $('research-status').textContent = shields.research && held.length ? `Another extension or a policy controls ${held.join(' and ')}, so Scout can't change it. ${base}` : base;
+}
+$('research').onchange = (e) => ask({ type: 'saveShields', changes: { research: e.target.checked } }).then(render);
 $('farble').onchange = async (e) => {
   const { site, shields } = await ask({ type: 'panelState', tabId: await activeTabId() });
   if (!site) return;
@@ -658,7 +739,29 @@ $('farble').onchange = async (e) => {
 $('notify-settings').onclick = () => chrome.tabs.create({ url: 'chrome://settings/content/notifications' });
 
 // ---- Activity ---------------------------------------------------------------
+async function renderWatched() {
+  const watched = await ask({ type: 'getWatched' });
+  $('watched-section').hidden = !watched.length;
+  const day = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  $('watched-list').replaceChildren(
+    ...watched.map((w) => {
+      const last = w.changes.at(-1);
+      const text = el('div', 'grow');
+      const title = Object.assign(el('a', '', w.title), { href: w.url, target: '_blank', rel: 'noopener' });
+      const status = Date.now() > w.until ? `Stopped watching ${day(w.until)}` : w.error ? w.error : last ? `${last.sentence} ${day(last.at)}` : `No changes · checked ${day(w.checkedAt)}`;
+      text.append(title, el('small', `secondary${last?.stealth ? ' warn' : ''}`, `${w.host} · ${status}`));
+      if (last) {
+        const details = el('details');
+        details.append(el('summary', '', `${plural(w.changes.length, 'change')}`), ...w.changes.slice(-5).reverse().flatMap((c) => [el('p', 'act-day', `${day(c.at)}${c.stealth ? ' · updated date unchanged' : ''}`), ...changeLines(c.changes).slice(0, 8).map((l) => el('p', '', l))]));
+        text.append(details);
+      }
+      return li(`row${last?.stealth ? ' finding soft' : ''}`, text, linkButton('Stop', () => ask({ type: 'unwatchStory', url: w.url }).then(renderWatched), 'danger'));
+    }),
+  );
+}
+
 async function renderActivity() {
+  renderWatched();
   const items = await ask({ type: 'getActivity' });
   const list = $('activity-list');
   if (!items.length) return list.replaceChildren(el('p', 'footnote', 'Nothing yet. When Scout steps in, it says so here.'));

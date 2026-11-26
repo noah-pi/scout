@@ -5,10 +5,11 @@
 //   rules/easyprivacy-allow.json  allow rules   (same source; kept apart so the ledger only counts blocks)
 //   rules/easylist.json           ad block rules (uBO Lite's DNR build of EasyList, GPLv3 / CC BY-SA)
 //   rules/easylist-allow.json     its allow rules
+//   rules/*-redirect.json         redirect rules whose stand-in file Scout ships (web_accessible_resources/)
 //   data/entities.json            domain → owning company (DuckDuckGo Tracker Radar, CC BY-NC-SA 4.0)
 //   data/ai-sites.json            AI-heavy sites for the search slop filter (laylavish HUGE AI Blocklist, CC0)
 //   data/c2pa-trust.pem           the official C2PA trust list (c2pa-org/conformance-public)
-import { writeFileSync } from 'node:fs';
+import { readdirSync, writeFileSync } from 'node:fs';
 
 const UBOL = 'https://raw.githubusercontent.com/uBlockOrigin/uBOL-home/main/chromium/rulesets/main';
 const EASYPRIVACY = `${UBOL}/easyprivacy.json`;
@@ -25,12 +26,15 @@ async function json(url) {
   return res.json();
 }
 
-// Redirect rules point at uBO's own stub scripts, which Scout doesn't carry,
-// and the header rules rewrite CSP on a handful of piracy sites. Keep the rest.
-export function splitEasyPrivacy(rules) {
+// Redirect rules point at uBO's stand-in scripts; Scout keeps those whose
+// file it ships in web_accessible_resources/. The header rules rewrite CSP on
+// a handful of piracy sites and are dropped.
+export function splitEasyPrivacy(rules, resources = []) {
   const block = rules.filter((r) => r.action.type === 'block');
   const allow = rules.filter((r) => r.action.type === 'allow');
-  return { block, allow };
+  const have = new Set(resources.map((f) => `/web_accessible_resources/${f}`));
+  const redirect = rules.filter((r) => r.action.type === 'redirect' && have.has(r.action.redirect?.extensionPath));
+  return { block, allow, redirect };
 }
 
 // Keeps only the certificate blocks; the published list has "Subject" notes
@@ -61,15 +65,14 @@ export function compactEntities(entityMap) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const { block, allow } = splitEasyPrivacy(await json(EASYPRIVACY));
-  writeFileSync(out('rules/easyprivacy.json'), JSON.stringify(block) + '\n');
-  writeFileSync(out('rules/easyprivacy-allow.json'), JSON.stringify(allow) + '\n');
-  console.log(`easyprivacy: ${block.length} block, ${allow.length} allow`);
-
-  const ads = splitEasyPrivacy(await json(EASYLIST));
-  writeFileSync(out('rules/easylist.json'), JSON.stringify(ads.block) + '\n');
-  writeFileSync(out('rules/easylist-allow.json'), JSON.stringify(ads.allow) + '\n');
-  console.log(`easylist: ${ads.block.length} block, ${ads.allow.length} allow`);
+  const resources = readdirSync(out('web_accessible_resources'));
+  for (const [name, url] of [['easyprivacy', EASYPRIVACY], ['easylist', EASYLIST]]) {
+    const { block, allow, redirect } = splitEasyPrivacy(await json(url), resources);
+    writeFileSync(out(`rules/${name}.json`), JSON.stringify(block) + '\n');
+    writeFileSync(out(`rules/${name}-allow.json`), JSON.stringify(allow) + '\n');
+    writeFileSync(out(`rules/${name}-redirect.json`), JSON.stringify(redirect) + '\n');
+    console.log(`${name}: ${block.length} block, ${allow.length} allow, ${redirect.length} redirect`);
+  }
 
   const res = await fetch(AI_SITES);
   if (!res.ok) throw new Error(`${AI_SITES}: HTTP ${res.status}`);

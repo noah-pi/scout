@@ -10,8 +10,14 @@ import { registrableDomain } from '../shared/tripwire.js';
 import { addReceipt, cached, getTab, updateTab } from './store.js';
 import { clearActivity, count, getActivity, getHistory, logActivity } from './activity.js';
 import * as memory from './memory.js';
+import { ipLogger, ipLoggerRegexes } from '../shared/iploggers.js';
+import { readTimestampResponse, timestampRequest } from '../shared/asn1.js';
+import { buildWacz } from '../shared/wacz.js';
 
 const REPLAY_RULE = 20_000;
+const IP_LOGGER_RULE = 20_100; // through 20_199
+const REFERER_RULE = 20_200;
+const OPENED_RULE_BASE = 21_000; // session rules: IP-logger links you chose to open
 const PEEK_RULE = 19_990; // and 19_991
 const DAY = 86_400_000;
 
@@ -30,8 +36,59 @@ chrome.runtime.onInstalled.addListener(async () => {
   const { shields } = await chrome.storage.local.get('shields');
   guards = effectiveGuards(shields);
   await syncReplayRule().catch(() => {});
-  await syncFarble(shields?.farble ?? []).catch(() => {});
+  await syncIpLoggerRule().catch(() => {});
+  await syncResearch(Boolean(shields?.research)).catch(() => {});
+  await syncFarble(shields?.farble ?? [], Boolean(shields?.research)).catch(() => {});
 });
+
+// IP-logging links never load unseen: Chrome sends the page to Scout's stop
+// page first, wherever the link came from (a page, an email app, a paste).
+async function syncIpLoggerRule() {
+  const existing = (await chrome.declarativeNetRequest.getDynamicRules()).map((r) => r.id).filter((id) => id >= IP_LOGGER_RULE && id < IP_LOGGER_RULE + 100);
+  const stop = `${chrome.runtime.getURL('src/stop/stop.html')}#\\0`;
+  await chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: existing,
+    addRules: guards.ipLoggers
+      ? ipLoggerRegexes().map((regexFilter, i) => ({ id: IP_LOGGER_RULE + i, priority: 2, action: { type: 'redirect', redirect: { regexSubstitution: stop } }, condition: { regexFilter, resourceTypes: ['main_frame'] } }))
+      : [],
+  });
+}
+
+// Research mode's browser-wide half. Each Chrome setting is handed back
+// (cleared) when the mode goes off, which restores whatever you had.
+const RESEARCH_PRIVACY = [
+  [() => chrome.privacy.network.webRTCIPHandlingPolicy, 'disable_non_proxied_udp'],
+  [() => chrome.privacy.network.networkPredictionEnabled, false],
+  [() => chrome.privacy.websites.hyperlinkAuditingEnabled, false],
+];
+async function syncResearch(on) {
+  for (const [setting, value] of RESEARCH_PRIVACY) {
+    const s = setting();
+    if (!s) continue;
+    await (on ? s.set({ value }) : s.clear({})).catch(() => {});
+  }
+  await chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: [REFERER_RULE],
+    addRules: on
+      ? [{ id: REFERER_RULE, priority: 1, action: { type: 'modifyHeaders', requestHeaders: [{ header: 'referer', operation: 'remove' }] }, condition: { domainType: 'thirdParty' } }]
+      : [],
+  });
+}
+
+// What research mode has in force, for the panel. Another extension or a
+// policy can hold a setting, in which case Scout's value doesn't apply.
+export async function researchStatus() {
+  const out = {};
+  for (const [name, setting] of [['webrtc', () => chrome.privacy.network.webRTCIPHandlingPolicy], ['prediction', () => chrome.privacy.network.networkPredictionEnabled], ['auditing', () => chrome.privacy.websites.hyperlinkAuditingEnabled]]) {
+    try {
+      const { value, levelOfControl } = await setting().get({});
+      out[name] = { value, ours: levelOfControl === 'controlled_by_this_extension', blocked: levelOfControl === 'controlled_by_other_extensions' || levelOfControl === 'not_controllable' };
+    } catch {
+      out[name] = null;
+    }
+  }
+  return out;
+}
 
 // Session recorders blocked everywhere (most are on EasyPrivacy already; this
 // catches the rest), unless you switch it off.
@@ -47,14 +104,14 @@ async function syncReplayRule() {
 
 // Fingerprint defense runs only on sites you chose, registered as a
 // main-world script for exactly those sites.
-async function syncFarble(sites) {
+// Research mode turns it on everywhere.
+async function syncFarble(sites, everywhere = false) {
   const id = 'scout-farble';
   await chrome.scripting.unregisterContentScripts({ ids: [id] }).catch(() => {});
   const clean = sites.filter((d) => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(d));
-  if (!clean.length) return;
-  await chrome.scripting.registerContentScripts([
-    { id, js: ['dist/farble.js'], matches: clean.flatMap((d) => [`*://${d}/*`, `*://*.${d}/*`]), runAt: 'document_start', world: 'MAIN', allFrames: true, persistAcrossSessions: true },
-  ]);
+  if (!clean.length && !everywhere) return;
+  const matches = everywhere ? ['<all_urls>'] : clean.flatMap((d) => [`*://${d}/*`, `*://*.${d}/*`]);
+  await chrome.scripting.registerContentScripts([{ id, js: ['dist/farble.js'], matches, runAt: 'document_start', world: 'MAIN', allFrames: true, persistAcrossSessions: true }]);
 }
 
 export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShields }) {
@@ -64,7 +121,11 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
     const before = guards;
     guards = effectiveGuards(changes.shields.newValue);
     if (before.replayBlock !== guards.replayBlock) syncReplayRule().catch(() => {});
-    if (JSON.stringify(changes.shields.oldValue?.farble ?? []) !== JSON.stringify(changes.shields.newValue?.farble ?? [])) syncFarble(changes.shields.newValue?.farble ?? []).catch(() => {});
+    if (before.ipLoggers !== guards.ipLoggers) syncIpLoggerRule().catch(() => {});
+    const research = Boolean(changes.shields.newValue?.research);
+    if (Boolean(changes.shields.oldValue?.research) !== research) syncResearch(research).catch(() => {});
+    if (JSON.stringify(changes.shields.oldValue?.farble ?? []) !== JSON.stringify(changes.shields.newValue?.farble ?? []) || Boolean(changes.shields.oldValue?.research) !== research)
+      syncFarble(changes.shields.newValue?.farble ?? [], research).catch(() => {});
   });
 
   const flagTab = (sender, fn) =>
@@ -213,8 +274,11 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
       return card;
     },
 
-    // Evidence: the page's HTML and a screenshot, hashed and signed with a
-    // key that never leaves this browser, saved to Downloads.
+    // Evidence: the page's HTML and a screenshot, as plain files and as a
+    // WACZ web archive; a record of their hashes, signed with a key that never
+    // leaves this browser; and an RFC 3161 timestamp from a public timestamp
+    // authority over that record, which anyone can check without trusting
+    // you or Scout. Only the record's hash goes to the timestamp authority.
     async saveEvidence({ tabId }) {
       const tab = await chrome.tabs.get(tabId);
       if (!/^https?:/.test(tab.url ?? '')) throw new Error('Only web pages can be saved as evidence.');
@@ -222,27 +286,37 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
       const [{ result: html }] = await chrome.scripting.executeScript({ target: { tabId }, func: () => `<!-- saved by Scout from ${location.href} -->\n${document.documentElement.outerHTML}` });
       const htmlBytes = new TextEncoder().encode(html);
       const pngBytes = Uint8Array.from(atob(shot.split(',')[1]), (c) => c.charCodeAt(0));
+      const capturedAt = new Date().toISOString();
+      const software = `Scout ${chrome.runtime.getManifest().version}`;
+      const wacz = await buildWacz({ url: tab.url, title: tab.title ?? '', html: htmlBytes, screenshot: pngBytes, capturedAt, software });
       const record = {
         url: tab.url,
         title: tab.title,
-        capturedAt: new Date().toISOString(),
+        capturedAt,
         userAgent: navigator.userAgent,
-        files: { 'page.html': await sha256(htmlBytes), 'screenshot.png': await sha256(pngBytes) },
-        note: 'The screenshot shows the visible part of the page only. Hashes are SHA-256, hex. The signature is ECDSA P-256 with SHA-256 over this JSON without the "signature" field, keys sorted.',
+        software,
+        files: { 'page.html': await sha256(htmlBytes), 'screenshot.png': await sha256(pngBytes), 'page.wacz': await sha256(wacz) },
+        note: 'The screenshot shows the visible part of the page only. page.wacz holds the same page and screenshot as a WACZ web archive (opens in ReplayWeb.page). Hashes are SHA-256, hex. The signature is ECDSA P-256 with SHA-256 over this JSON without the "signature" field, keys sorted. evidence.tsr, if present, is an RFC 3161 timestamp over this file exactly as saved.',
       };
       const { publicJwk, sign } = await evidenceKey();
       record.publicKey = publicJwk;
       record.signature = await sign(canonical(record));
-      const folder = `Scout evidence/${new URL(tab.url).hostname} ${record.capturedAt.replace(/[:.]/g, '-')}`;
+      const recordBytes = new TextEncoder().encode(JSON.stringify(record, null, 2));
+      const stamp = await timestamp(recordBytes);
+
+      const folder = `Scout evidence/${new URL(tab.url).hostname} ${capturedAt.replace(/[:.]/g, '-')}`;
       const save = (name, url) => {
         ownNames.set(url, `${folder}/${name}`);
         return chrome.downloads.download({ url, filename: `${folder}/${name}`, conflictAction: 'uniquify', saveAs: false });
       };
       await save('page.html', `data:text/html;base64,${base64(htmlBytes)}`);
       await save('screenshot.png', shot);
-      await save('evidence.json', `data:application/json;base64,${base64(new TextEncoder().encode(JSON.stringify(record, null, 2)))}`);
-      logActivity({ kind: 'evidence', host: new URL(tab.url).hostname, text: `Saved signed evidence of ${tab.title?.slice(0, 60) || tab.url}.` });
-      return { folder, hashes: record.files };
+      await save('page.wacz', `data:application/octet-stream;base64,${base64(wacz)}`);
+      await save('evidence.json', `data:application/json;base64,${base64(recordBytes)}`);
+      if (stamp.token) await save('evidence.tsr', `data:application/timestamp-reply;base64,${base64(stamp.token)}`);
+      await save('HOW-TO-VERIFY.txt', `data:text/plain;base64,${base64(new TextEncoder().encode(verifyNotes(stamp)))}`);
+      logActivity({ kind: 'evidence', host: new URL(tab.url).hostname, text: `Saved signed evidence of ${tab.title?.slice(0, 60) || tab.url}${stamp.token ? `, timestamped by ${stamp.service}` : ', without a timestamp'}.` });
+      return { folder, hashes: record.files, timestamp: stamp.token ? { service: stamp.service, at: stamp.genTime } : { error: stamp.error } };
     },
 
     // A citation with a fresh Wayback Machine copy. Sends the page's address
@@ -281,7 +355,9 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
         archived ? `Archived ${date(Date.now())} at ${archived}.` : `Accessed ${date(Date.now())}; the Internet Archive didn't return a copy.`,
       ];
       logActivity({ kind: 'cite', host: new URL(tab.url).hostname, text: archived ? 'Archived the page and copied a citation.' : 'Copied a citation; the archive was unavailable.' });
-      return { text: parts.filter(Boolean).join(' '), archived };
+      // A story you cite is watched for edits from now on.
+      const watching = await handlers.watchStory({ tabId }).then(() => true, () => false);
+      return { text: parts.filter(Boolean).join(' '), archived, watching };
     },
 
     // Honest titles on YouTube, from DeArrow's crowd-sourced titles. Only a
@@ -333,6 +409,29 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
     async feedLeave(_, sender) {
       if (sender.tab) await chrome.tabs.update(sender.tab.id, { url: 'chrome://newtab' }).catch(() => chrome.tabs.remove(sender.tab.id));
     },
+
+    // The stop page for an IP-logging link: it reports what it stopped, and
+    // asks to open the link when you choose to. That allows the link's site
+    // for the rest of this browser session.
+    async ipLoggerStopped({ url }) {
+      const host = safeHost(url);
+      const logger = ipLogger(host);
+      if (!logger) return null;
+      count(['guards', 'ip-logger']);
+      logActivity({ kind: 'ip-logger', host, tone: 'bad', text: `Stopped an IP-logging link (${logger.service}) before it loaded.` });
+      return logger;
+    },
+    async ipLoggerOpen({ url }) {
+      const host = safeHost(url);
+      if (!ipLogger(host) || !/^https?:/.test(url)) throw new Error('Not an IP-logging link.');
+      const ids = (await chrome.declarativeNetRequest.getSessionRules()).map((r) => r.id).filter((id) => id >= OPENED_RULE_BASE && id < OPENED_RULE_BASE + 500);
+      const id = ids.length ? Math.max(...ids) + 1 : OPENED_RULE_BASE;
+      await chrome.declarativeNetRequest.updateSessionRules({ addRules: [{ id, priority: 3, action: { type: 'allow' }, condition: { requestDomains: [host], resourceTypes: ['main_frame'] } }] });
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      logActivity({ kind: 'ip-logger', host, text: `You opened an IP-logging link on ${host} anyway.` });
+      return { host };
+    },
+    researchStatus: () => researchStatus(),
 
     getActivity: () => getActivity(),
     clearActivity: () => clearActivity(),
@@ -556,6 +655,75 @@ async function wikidataOutlet(domain) {
     wikipedia: row.wiki?.value ?? null,
     wikidata: row.item?.value ?? null,
   };
+}
+
+// Public RFC 3161 timestamp authorities, tried in order. Their replies are
+// signed, so plain http is how DigiCert serves it. tsaUrl is for tests.
+const TSAS = [
+  ['DigiCert', 'http://timestamp.digicert.com'],
+  ['FreeTSA', 'https://freetsa.org/tsr'],
+];
+async function timestamp(bytes) {
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  const nonce = crypto.getRandomValues(new Uint8Array(8));
+  const { tsaUrl } = await chrome.storage.local.get('tsaUrl');
+  const errors = [];
+  for (const [service, url] of tsaUrl ? [['Test TSA', tsaUrl]] : TSAS) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15_000);
+      const res = await fetch(url, { method: 'POST', body: timestampRequest(hash, nonce), headers: { 'content-type': 'application/timestamp-query' }, credentials: 'omit', signal: ctrl.signal });
+      clearTimeout(timer);
+      await addReceipt({ service: new URL(url).hostname, sent: 'a SHA-256 hash of the evidence record', reason: 'Timestamp for saved evidence' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const token = new Uint8Array(await res.arrayBuffer());
+      const read = readTimestampResponse(token, hash, nonce);
+      if (!read.granted) throw new Error(`refused (status ${read.status})`);
+      if (!read.matchesHash || !read.matchesNonce) throw new Error('answered for a different request');
+      return { service, url, token, genTime: read.genTime };
+    } catch (error) {
+      errors.push(`${service}: ${error.message ?? error}`);
+    }
+  }
+  return { error: errors.join('; ') };
+}
+
+function verifyNotes(stamp) {
+  return [
+    'How to check this evidence',
+    '',
+    '1. The files are unchanged. Compare each SHA-256 in evidence.json ("files") with:',
+    '     shasum -a 256 page.html screenshot.png page.wacz',
+    '',
+    '2. The record was made by this browser. evidence.json carries an ECDSA P-256 signature',
+    '   and the public key that checks it. The key never left the browser it was made in, so',
+    '   the signature ties every record it signed to one installation of Scout.',
+    '',
+    stamp.token
+      ? [
+          `3. The record existed at ${stamp.genTime}. evidence.tsr is an RFC 3161 timestamp from`,
+          `   ${stamp.service} (${stamp.url}) over evidence.json exactly as saved. Read it with:`,
+          '     openssl ts -reply -in evidence.tsr -text',
+          '   and check it against the file and the authority\'s certificates with:',
+          '     openssl ts -verify -data evidence.json -in evidence.tsr -CAfile /etc/ssl/cert.pem',
+          '   (on Linux the bundle is usually /etc/ssl/certs/ca-certificates.crt).',
+          '   Anyone can do this without trusting you or Scout.',
+        ].join('\n')
+      : `3. No timestamp: no timestamp authority answered (${stamp.error}). The capture time in evidence.json is this computer's clock.`,
+    '',
+    '4. page.wacz is a WACZ web archive of the same page and screenshot. Open it at',
+    '   https://replayweb.page or in any tool that reads WACZ. It holds the page\'s HTML as',
+    '   rendered in the browser, so images and styles from other servers are not inside it.',
+    '',
+  ].join('\n');
+}
+
+function safeHost(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
 }
 
 // ---- Small crypto helpers ---------------------------------------------------

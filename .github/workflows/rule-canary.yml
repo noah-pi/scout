@@ -1,0 +1,46 @@
+name: Page-rule canary
+
+# Nightly: load a few live pages and check that Scout's site-specific page
+# rules still match. A rule that matches nothing opens (or updates) one issue;
+# when everything matches again, the issue closes. Never fails a build.
+on:
+  schedule:
+    - cron: '41 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  canary:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/rule-canary.mjs --json canary.json
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { report, rulesUpdated, checkedAt } = JSON.parse(fs.readFileSync('canary.json', 'utf8'));
+            const missing = report.filter((r) => r.result === 'missing');
+            const title = 'Page rules may have stopped matching';
+            const { data: open } = await github.rest.issues.listForRepo({ ...context.repo, state: 'open', labels: 'page-rules', per_page: 10 });
+            const existing = open.find((i) => i.title === title);
+            const table = report.map((r) => `| ${r.key} | ${r.result} | ${r.detail} | ${r.url} |`).join('\n');
+            const body = `The nightly canary (${checkedAt}, rules from ${rulesUpdated}) found rules that match nothing on a live page. The site has probably changed its markup; fix the selectors in \`data/page-rules.json\` and bump \`updated\`.\n\n| Rule | Result | Detail | Page |\n|---|---|---|---|\n${table}\n\n"blocked" means the page didn't load or showed a bot check, which says nothing about the rule.\n\n[Run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            if (missing.length) {
+              if (existing) await github.rest.issues.update({ ...context.repo, issue_number: existing.number, body });
+              else await github.rest.issues.create({ ...context.repo, title, body, labels: ['page-rules'] });
+            } else if (existing && report.every((r) => r.result === 'ok')) {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: existing.number, body: `Every rule matched again on ${checkedAt}. Closing.` });
+              await github.rest.issues.update({ ...context.repo, issue_number: existing.number, state: 'closed', state_reason: 'completed' });
+            }
+            core.summary.addHeading('Page-rule canary').addTable([[{ data: 'Rule', header: true }, { data: 'Result', header: true }, { data: 'Detail', header: true }], ...report.map((r) => [r.key, r.result, r.detail])]);
+            await core.summary.write();
