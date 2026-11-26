@@ -533,8 +533,10 @@ $('cite').onclick = async (e) => busy(e.currentTarget, async () => {
   toolStatus(archived ? `Copied, with the archived copy: ${text}` : `Copied (the archive didn't answer, so no archived link): ${text}`);
 }, 'tool-status');
 $('evidence').onclick = async (e) => busy(e.currentTarget, async () => {
-  const { folder, hashes } = await ask({ type: 'saveEvidence', tabId: await activeTabId() });
-  toolStatus(`Saved to Downloads/${folder}: the page, a screenshot, and a signed record (page ${hashes['page.html'].slice(0, 10)}…).`);
+  toolStatus('Saving the page, a screenshot and a web archive, and asking a timestamp authority to witness the record.');
+  const { folder, hashes, timestamp } = await ask({ type: 'saveEvidence', tabId: await activeTabId() });
+  const when = timestamp.at ? `timestamped by ${timestamp.service} at ${new Date(timestamp.at).toLocaleString()}` : 'not timestamped (no timestamp authority answered)';
+  toolStatus(`Saved to Downloads/${folder}: the page, a screenshot, a WACZ archive and a signed record, ${when}. Record ${hashes['page.wacz'].slice(0, 10)}…; HOW-TO-VERIFY.txt says how anyone can check it.`);
 }, 'tool-status');
 
 function renderOutlet(o) {

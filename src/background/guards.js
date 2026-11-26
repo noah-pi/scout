@@ -11,6 +11,8 @@ import { addReceipt, cached, getTab, updateTab } from './store.js';
 import { clearActivity, count, getActivity, getHistory, logActivity } from './activity.js';
 import * as memory from './memory.js';
 import { ipLogger, ipLoggerRegexes } from '../shared/iploggers.js';
+import { readTimestampResponse, timestampRequest } from '../shared/asn1.js';
+import { buildWacz } from '../shared/wacz.js';
 
 const REPLAY_RULE = 20_000;
 const IP_LOGGER_RULE = 20_100; // through 20_199
@@ -272,8 +274,11 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
       return card;
     },
 
-    // Evidence: the page's HTML and a screenshot, hashed and signed with a
-    // key that never leaves this browser, saved to Downloads.
+    // Evidence: the page's HTML and a screenshot, as plain files and as a
+    // WACZ web archive; a record of their hashes, signed with a key that never
+    // leaves this browser; and an RFC 3161 timestamp from a public timestamp
+    // authority over that record, which anyone can check without trusting
+    // you or Scout. Only the record's hash goes to the timestamp authority.
     async saveEvidence({ tabId }) {
       const tab = await chrome.tabs.get(tabId);
       if (!/^https?:/.test(tab.url ?? '')) throw new Error('Only web pages can be saved as evidence.');
@@ -281,27 +286,37 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
       const [{ result: html }] = await chrome.scripting.executeScript({ target: { tabId }, func: () => `<!-- saved by Scout from ${location.href} -->\n${document.documentElement.outerHTML}` });
       const htmlBytes = new TextEncoder().encode(html);
       const pngBytes = Uint8Array.from(atob(shot.split(',')[1]), (c) => c.charCodeAt(0));
+      const capturedAt = new Date().toISOString();
+      const software = `Scout ${chrome.runtime.getManifest().version}`;
+      const wacz = await buildWacz({ url: tab.url, title: tab.title ?? '', html: htmlBytes, screenshot: pngBytes, capturedAt, software });
       const record = {
         url: tab.url,
         title: tab.title,
-        capturedAt: new Date().toISOString(),
+        capturedAt,
         userAgent: navigator.userAgent,
-        files: { 'page.html': await sha256(htmlBytes), 'screenshot.png': await sha256(pngBytes) },
-        note: 'The screenshot shows the visible part of the page only. Hashes are SHA-256, hex. The signature is ECDSA P-256 with SHA-256 over this JSON without the "signature" field, keys sorted.',
+        software,
+        files: { 'page.html': await sha256(htmlBytes), 'screenshot.png': await sha256(pngBytes), 'page.wacz': await sha256(wacz) },
+        note: 'The screenshot shows the visible part of the page only. page.wacz holds the same page and screenshot as a WACZ web archive (opens in ReplayWeb.page). Hashes are SHA-256, hex. The signature is ECDSA P-256 with SHA-256 over this JSON without the "signature" field, keys sorted. evidence.tsr, if present, is an RFC 3161 timestamp over this file exactly as saved.',
       };
       const { publicJwk, sign } = await evidenceKey();
       record.publicKey = publicJwk;
       record.signature = await sign(canonical(record));
-      const folder = `Scout evidence/${new URL(tab.url).hostname} ${record.capturedAt.replace(/[:.]/g, '-')}`;
+      const recordBytes = new TextEncoder().encode(JSON.stringify(record, null, 2));
+      const stamp = await timestamp(recordBytes);
+
+      const folder = `Scout evidence/${new URL(tab.url).hostname} ${capturedAt.replace(/[:.]/g, '-')}`;
       const save = (name, url) => {
         ownNames.set(url, `${folder}/${name}`);
         return chrome.downloads.download({ url, filename: `${folder}/${name}`, conflictAction: 'uniquify', saveAs: false });
       };
       await save('page.html', `data:text/html;base64,${base64(htmlBytes)}`);
       await save('screenshot.png', shot);
-      await save('evidence.json', `data:application/json;base64,${base64(new TextEncoder().encode(JSON.stringify(record, null, 2)))}`);
-      logActivity({ kind: 'evidence', host: new URL(tab.url).hostname, text: `Saved signed evidence of ${tab.title?.slice(0, 60) || tab.url}.` });
-      return { folder, hashes: record.files };
+      await save('page.wacz', `data:application/octet-stream;base64,${base64(wacz)}`);
+      await save('evidence.json', `data:application/json;base64,${base64(recordBytes)}`);
+      if (stamp.token) await save('evidence.tsr', `data:application/timestamp-reply;base64,${base64(stamp.token)}`);
+      await save('HOW-TO-VERIFY.txt', `data:text/plain;base64,${base64(new TextEncoder().encode(verifyNotes(stamp)))}`);
+      logActivity({ kind: 'evidence', host: new URL(tab.url).hostname, text: `Saved signed evidence of ${tab.title?.slice(0, 60) || tab.url}${stamp.token ? `, timestamped by ${stamp.service}` : ', without a timestamp'}.` });
+      return { folder, hashes: record.files, timestamp: stamp.token ? { service: stamp.service, at: stamp.genTime } : { error: stamp.error } };
     },
 
     // A citation with a fresh Wayback Machine copy. Sends the page's address
@@ -638,6 +653,67 @@ async function wikidataOutlet(domain) {
     wikipedia: row.wiki?.value ?? null,
     wikidata: row.item?.value ?? null,
   };
+}
+
+// Public RFC 3161 timestamp authorities, tried in order. Their replies are
+// signed, so plain http is how DigiCert serves it. tsaUrl is for tests.
+const TSAS = [
+  ['DigiCert', 'http://timestamp.digicert.com'],
+  ['FreeTSA', 'https://freetsa.org/tsr'],
+];
+async function timestamp(bytes) {
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  const nonce = crypto.getRandomValues(new Uint8Array(8));
+  const { tsaUrl } = await chrome.storage.local.get('tsaUrl');
+  const errors = [];
+  for (const [service, url] of tsaUrl ? [['Test TSA', tsaUrl]] : TSAS) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15_000);
+      const res = await fetch(url, { method: 'POST', body: timestampRequest(hash, nonce), headers: { 'content-type': 'application/timestamp-query' }, credentials: 'omit', signal: ctrl.signal });
+      clearTimeout(timer);
+      await addReceipt({ service: new URL(url).hostname, sent: 'a SHA-256 hash of the evidence record', reason: 'Timestamp for saved evidence' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const token = new Uint8Array(await res.arrayBuffer());
+      const read = readTimestampResponse(token, hash, nonce);
+      if (!read.granted) throw new Error(`refused (status ${read.status})`);
+      if (!read.matchesHash || !read.matchesNonce) throw new Error('answered for a different request');
+      return { service, url, token, genTime: read.genTime };
+    } catch (error) {
+      errors.push(`${service}: ${error.message ?? error}`);
+    }
+  }
+  return { error: errors.join('; ') };
+}
+
+function verifyNotes(stamp) {
+  return [
+    'How to check this evidence',
+    '',
+    '1. The files are unchanged. Compare each SHA-256 in evidence.json ("files") with:',
+    '     shasum -a 256 page.html screenshot.png page.wacz',
+    '',
+    '2. The record was made by this browser. evidence.json carries an ECDSA P-256 signature',
+    '   and the public key that checks it. The key never left the browser it was made in, so',
+    '   the signature ties every record it signed to one installation of Scout.',
+    '',
+    stamp.token
+      ? [
+          `3. The record existed at ${stamp.genTime}. evidence.tsr is an RFC 3161 timestamp from`,
+          `   ${stamp.service} (${stamp.url}) over evidence.json exactly as saved. Read it with:`,
+          '     openssl ts -reply -in evidence.tsr -text',
+          '   and check it against the file and the authority\'s certificates with:',
+          '     openssl ts -verify -data evidence.json -in evidence.tsr -CAfile /etc/ssl/cert.pem',
+          '   (on Linux the bundle is usually /etc/ssl/certs/ca-certificates.crt).',
+          '   Anyone can do this without trusting you or Scout.',
+        ].join('\n')
+      : `3. No timestamp: no timestamp authority answered (${stamp.error}). The capture time in evidence.json is this computer's clock.`,
+    '',
+    '4. page.wacz is a WACZ web archive of the same page and screenshot. Open it at',
+    '   https://replayweb.page or in any tool that reads WACZ. It holds the page\'s HTML as',
+    '   rendered in the browser, so images and styles from other servers are not inside it.',
+    '',
+  ].join('\n');
 }
 
 function safeHost(url) {
