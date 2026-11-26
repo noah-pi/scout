@@ -10,8 +10,12 @@ import { registrableDomain } from '../shared/tripwire.js';
 import { addReceipt, cached, getTab, updateTab } from './store.js';
 import { clearActivity, count, getActivity, getHistory, logActivity } from './activity.js';
 import * as memory from './memory.js';
+import { ipLogger, ipLoggerRegexes } from '../shared/iploggers.js';
 
 const REPLAY_RULE = 20_000;
+const IP_LOGGER_RULE = 20_100; // through 20_199
+const REFERER_RULE = 20_200;
+const OPENED_RULE_BASE = 21_000; // session rules: IP-logger links you chose to open
 const PEEK_RULE = 19_990; // and 19_991
 const DAY = 86_400_000;
 
@@ -30,8 +34,59 @@ chrome.runtime.onInstalled.addListener(async () => {
   const { shields } = await chrome.storage.local.get('shields');
   guards = effectiveGuards(shields);
   await syncReplayRule().catch(() => {});
-  await syncFarble(shields?.farble ?? []).catch(() => {});
+  await syncIpLoggerRule().catch(() => {});
+  await syncResearch(Boolean(shields?.research)).catch(() => {});
+  await syncFarble(shields?.farble ?? [], Boolean(shields?.research)).catch(() => {});
 });
+
+// IP-logging links never load unseen: Chrome sends the page to Scout's stop
+// page first, wherever the link came from (a page, an email app, a paste).
+async function syncIpLoggerRule() {
+  const existing = (await chrome.declarativeNetRequest.getDynamicRules()).map((r) => r.id).filter((id) => id >= IP_LOGGER_RULE && id < IP_LOGGER_RULE + 100);
+  const stop = `${chrome.runtime.getURL('src/stop/stop.html')}#\\0`;
+  await chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: existing,
+    addRules: guards.ipLoggers
+      ? ipLoggerRegexes().map((regexFilter, i) => ({ id: IP_LOGGER_RULE + i, priority: 2, action: { type: 'redirect', redirect: { regexSubstitution: stop } }, condition: { regexFilter, resourceTypes: ['main_frame'] } }))
+      : [],
+  });
+}
+
+// Research mode's browser-wide half. Each Chrome setting is handed back
+// (cleared) when the mode goes off, which restores whatever you had.
+const RESEARCH_PRIVACY = [
+  [() => chrome.privacy.network.webRTCIPHandlingPolicy, 'disable_non_proxied_udp'],
+  [() => chrome.privacy.network.networkPredictionEnabled, false],
+  [() => chrome.privacy.websites.hyperlinkAuditingEnabled, false],
+];
+async function syncResearch(on) {
+  for (const [setting, value] of RESEARCH_PRIVACY) {
+    const s = setting();
+    if (!s) continue;
+    await (on ? s.set({ value }) : s.clear({})).catch(() => {});
+  }
+  await chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: [REFERER_RULE],
+    addRules: on
+      ? [{ id: REFERER_RULE, priority: 1, action: { type: 'modifyHeaders', requestHeaders: [{ header: 'referer', operation: 'remove' }] }, condition: { domainType: 'thirdParty' } }]
+      : [],
+  });
+}
+
+// What research mode has in force, for the panel. Another extension or a
+// policy can hold a setting, in which case Scout's value doesn't apply.
+export async function researchStatus() {
+  const out = {};
+  for (const [name, setting] of [['webrtc', () => chrome.privacy.network.webRTCIPHandlingPolicy], ['prediction', () => chrome.privacy.network.networkPredictionEnabled], ['auditing', () => chrome.privacy.websites.hyperlinkAuditingEnabled]]) {
+    try {
+      const { value, levelOfControl } = await setting().get({});
+      out[name] = { value, ours: levelOfControl === 'controlled_by_this_extension', blocked: levelOfControl === 'controlled_by_other_extensions' || levelOfControl === 'not_controllable' };
+    } catch {
+      out[name] = null;
+    }
+  }
+  return out;
+}
 
 // Session recorders blocked everywhere (most are on EasyPrivacy already; this
 // catches the rest), unless you switch it off.
@@ -47,14 +102,14 @@ async function syncReplayRule() {
 
 // Fingerprint defense runs only on sites you chose, registered as a
 // main-world script for exactly those sites.
-async function syncFarble(sites) {
+// Research mode turns it on everywhere.
+async function syncFarble(sites, everywhere = false) {
   const id = 'scout-farble';
   await chrome.scripting.unregisterContentScripts({ ids: [id] }).catch(() => {});
   const clean = sites.filter((d) => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(d));
-  if (!clean.length) return;
-  await chrome.scripting.registerContentScripts([
-    { id, js: ['dist/farble.js'], matches: clean.flatMap((d) => [`*://${d}/*`, `*://*.${d}/*`]), runAt: 'document_start', world: 'MAIN', allFrames: true, persistAcrossSessions: true },
-  ]);
+  if (!clean.length && !everywhere) return;
+  const matches = everywhere ? ['<all_urls>'] : clean.flatMap((d) => [`*://${d}/*`, `*://*.${d}/*`]);
+  await chrome.scripting.registerContentScripts([{ id, js: ['dist/farble.js'], matches, runAt: 'document_start', world: 'MAIN', allFrames: true, persistAcrossSessions: true }]);
 }
 
 export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShields }) {
@@ -64,7 +119,11 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
     const before = guards;
     guards = effectiveGuards(changes.shields.newValue);
     if (before.replayBlock !== guards.replayBlock) syncReplayRule().catch(() => {});
-    if (JSON.stringify(changes.shields.oldValue?.farble ?? []) !== JSON.stringify(changes.shields.newValue?.farble ?? [])) syncFarble(changes.shields.newValue?.farble ?? []).catch(() => {});
+    if (before.ipLoggers !== guards.ipLoggers) syncIpLoggerRule().catch(() => {});
+    const research = Boolean(changes.shields.newValue?.research);
+    if (Boolean(changes.shields.oldValue?.research) !== research) syncResearch(research).catch(() => {});
+    if (JSON.stringify(changes.shields.oldValue?.farble ?? []) !== JSON.stringify(changes.shields.newValue?.farble ?? []) || Boolean(changes.shields.oldValue?.research) !== research)
+      syncFarble(changes.shields.newValue?.farble ?? [], research).catch(() => {});
   });
 
   const flagTab = (sender, fn) =>
@@ -334,6 +393,29 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
       if (sender.tab) await chrome.tabs.update(sender.tab.id, { url: 'chrome://newtab' }).catch(() => chrome.tabs.remove(sender.tab.id));
     },
 
+    // The stop page for an IP-logging link: it reports what it stopped, and
+    // asks to open the link when you choose to. That allows the link's site
+    // for the rest of this browser session.
+    async ipLoggerStopped({ url }) {
+      const host = safeHost(url);
+      const logger = ipLogger(host);
+      if (!logger) return null;
+      count(['guards', 'ip-logger']);
+      logActivity({ kind: 'ip-logger', host, tone: 'bad', text: `Stopped an IP-logging link (${logger.service}) before it loaded.` });
+      return logger;
+    },
+    async ipLoggerOpen({ url }) {
+      const host = safeHost(url);
+      if (!ipLogger(host) || !/^https?:/.test(url)) throw new Error('Not an IP-logging link.');
+      const ids = (await chrome.declarativeNetRequest.getSessionRules()).map((r) => r.id).filter((id) => id >= OPENED_RULE_BASE && id < OPENED_RULE_BASE + 500);
+      const id = ids.length ? Math.max(...ids) + 1 : OPENED_RULE_BASE;
+      await chrome.declarativeNetRequest.updateSessionRules({ addRules: [{ id, priority: 3, action: { type: 'allow' }, condition: { requestDomains: [host], resourceTypes: ['main_frame'] } }] });
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      logActivity({ kind: 'ip-logger', host, text: `You opened an IP-logging link on ${host} anyway.` });
+      return { host };
+    },
+    researchStatus: () => researchStatus(),
+
     getActivity: () => getActivity(),
     clearActivity: () => clearActivity(),
     getHistory: () => getHistory(),
@@ -556,6 +638,14 @@ async function wikidataOutlet(domain) {
     wikipedia: row.wiki?.value ?? null,
     wikidata: row.item?.value ?? null,
   };
+}
+
+function safeHost(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
 }
 
 // ---- Small crypto helpers ---------------------------------------------------

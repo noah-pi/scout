@@ -87,6 +87,7 @@
         <li class="label-row" id="unwrapped" hidden><span class="n">Links unwrapped</span><span class="v"></span></li>
         <li class="label-row" id="email" hidden><span class="n">Tracked emails</span><span class="v"></span></li>
         <li class="label-row" id="farbled" hidden><span class="n">Fingerprint defense</span><span class="v ok">On</span></li>
+        <li class="label-row" id="research-row" hidden><span class="n">Research mode</span><span class="v ok">On</span></li>
       </ul>
     </section>
 
@@ -136,6 +137,14 @@
         <li><label class="row switch"><span>Fingerprint defense here<small>Gives trackers slightly different canvas, audio and GPU readings each visit. Can break some sites.</small></span><input type="checkbox" role="switch" id="farble"></label></li>
       </ul>
       <p class="footnote">If a site breaks, pause blocking and cookie handling for it. Scam checks keep running.</p>
+    </section>
+
+    <section>
+      <h3 class="group-title">Research mode</h3>
+      <ul class="group">
+        <li><label class="row switch"><span>Research mode<small>For reading up on people who may check who visits. Fingerprint defense on every site, sites forgotten when you close them, no Referer sent to other sites, no link prefetching, and WebRTC kept from revealing your real IP behind a VPN.</small></span><input type="checkbox" role="switch" id="research"></label></li>
+      </ul>
+      <p class="footnote" id="research-status">Sites still see your IP address. To hide it, use a VPN or Tor as well.</p>
     </section>
 
     <section>

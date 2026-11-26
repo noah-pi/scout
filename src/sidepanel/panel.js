@@ -86,6 +86,7 @@ async function render() {
   renderTools(state, tab);
   renderGuards(state, tab, site);
   renderModeAndGuards(state.guards, shields, site);
+  renderResearch(shields, state.research);
   renderActivity();
   renderOutlet(tab.outlet);
 
@@ -572,7 +573,7 @@ function renderGuards({ shields }, tab, site) {
   row('affiliates', g.affiliates?.total, `${g.affiliates?.total} · ${networks.slice(0, 3).join(', ')}`);
   row('unwrapped', g.unwrapped, String(g.unwrapped));
   row('email', g.email?.messages, `${g.email?.messages}${g.email?.names?.length ? ` · ${g.email.names.slice(0, 3).join(', ')}` : ''}`, 'warn');
-  $('farbled').hidden = !(site && (shields.farble ?? []).includes(site));
+  $('farbled').hidden = !((site && (shields.farble ?? []).includes(site)) || shields.research);
 }
 
 // ---- Shields: mode and guards ----------------------------------------------
@@ -584,6 +585,7 @@ const GUARDS = {
     ['downloads', 'Download check', 'Pauses disguised files and programs from pages Scout warned about.'],
     ['notifications', 'Hold back notification prompts', 'Only prompts that arrive before you\'ve clicked anything.'],
     ['replayBlock', 'Block session recording', 'Hotjar, FullStory, Clarity and others that replay your clicks and typing.'],
+    ['ipLoggers', 'Stop IP-logging links', 'Grabify, IPLogger and others that record who opens a link. You can still open one.'],
   ],
   visible: [
     ['toasts', 'First-visit notes', 'A small card on arrival: what Scout handled.', 'select'],
@@ -644,9 +646,20 @@ function renderModeAndGuards(guards, shields, site) {
     if ($(id).contains(document.activeElement)) continue; // don't redraw under your cursor
     $(id).replaceChildren(...GUARDS[group].map((g) => guardRow(g, guards[g[0]])));
   }
-  $('farble').checked = Boolean(site && (shields.farble ?? []).includes(site));
-  $('farble').disabled = !site;
+  $('farble').checked = Boolean(site && (shields.farble ?? []).includes(site)) || Boolean(shields.research);
+  $('farble').disabled = !site || Boolean(shields.research);
+  $('research').checked = Boolean(shields.research);
 }
+
+// Research mode: one switch; the worker applies its parts. The status line
+// says if another extension or a policy holds one of the Chrome settings.
+function renderResearch(shields, status) {
+  $('research-row').hidden = !shields.research;
+  const base = 'Sites still see your IP address. To hide it, use a VPN or Tor as well.';
+  const held = Object.entries(status ?? {}).filter(([, s]) => s?.blocked).map(([k]) => ({ webrtc: 'WebRTC', prediction: 'prefetching', auditing: 'link pings' })[k]);
+  $('research-status').textContent = shields.research && held.length ? `Another extension or a policy controls ${held.join(' and ')}, so Scout can't change it. ${base}` : base;
+}
+$('research').onchange = (e) => ask({ type: 'saveShields', changes: { research: e.target.checked } }).then(render);
 $('farble').onchange = async (e) => {
   const { site, shields } = await ask({ type: 'panelState', tabId: await activeTabId() });
   if (!site) return;

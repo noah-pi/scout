@@ -42,7 +42,14 @@ export const PROTECTIVE = {
   downloads: true,
   notifications: true,
   replayBlock: true,
+  ipLoggers: true,
 };
+
+// Research mode: for reading up on people who may check who visits. It turns
+// these on whatever the switches say; the rest of it (fingerprint defense on
+// every site, no cross-site Referer, no prefetching, WebRTC kept behind the
+// proxy) lives in the worker.
+export const RESEARCH = { forgetOnClose: true };
 
 // Off until you turn them on: they change what sites see or show.
 export const OPT_IN = {
@@ -57,5 +64,5 @@ export const GUARD_KEYS = [...Object.keys(PROTECTIVE), ...Object.keys(MODES.bala
 export function effectiveGuards(shields) {
   const mode = MODES[shields?.mode] ? shields.mode : 'balanced';
   const { label, about, ...look } = MODES[mode];
-  return { mode, ...PROTECTIVE, ...look, ...OPT_IN, ...(shields?.guards ?? {}) };
+  return { mode, ...PROTECTIVE, ...look, ...OPT_IN, ...(shields?.guards ?? {}), ...(shields?.research ? RESEARCH : {}), research: Boolean(shields?.research) };
 }

@@ -1,6 +1,7 @@
 // Ask Scout about a link: local checks on where it points, before you click.
 // Pure. Domain age is looked up separately (it leaves the browser).
 import { DEFAULT_PROTECTED, findLookalike, hasPunycode, registrableDomain } from './tripwire.js';
+import { ipLogger } from './iploggers.js';
 
 const SHORTENERS = new Set(['bit.ly', 't.co', 'tinyurl.com', 'goo.gl', 'ow.ly', 'is.gd', 'buff.ly', 'rebrand.ly', 'cutt.ly', 'shorturl.at', 'tiny.cc', 'rb.gy', 'lnkd.in', 's.id', 't.ly', 'bl.ink']);
 
@@ -20,6 +21,8 @@ export function linkFindings(href, protectedDomains = DEFAULT_PROTECTED) {
   if (SHORTENERS.has(registrableDomain(host))) findings.push({ severity: 'soft', text: "It's a shortened link, so the destination is hidden until you click." });
   if (hasPunycode(host)) findings.push({ severity: 'soft', text: 'The domain uses non-Latin characters encoded as punycode.' });
   if (host.split('.').length > 5) findings.push({ severity: 'soft', text: 'The address has an unusually long chain of subdomains.' });
+  const logger = ipLogger(host);
+  if (logger) findings.push({ severity: 'hard', text: `It's an IP-logging link (${logger.service}): opening it records your IP address, rough location and device for whoever made it.` });
   const look = findLookalike(host, protectedDomains);
   if (look && look.kind !== 'other-suffix') findings.push({ severity: 'hard', text: `It imitates ${look.target} (${look.kind}).` });
   return { host, domain: registrableDomain(host), findings };

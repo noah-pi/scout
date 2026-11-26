@@ -17,7 +17,7 @@ import { pageFlags } from '../shared/assessment.js';
 import { normalizeEntry } from '../shared/spoilers.js';
 import { GUARD_KEYS, MODES, effectiveGuards } from '../shared/modes.js';
 import { evalSnippets, filterCompactRules } from '../../dist/consent-lib.js';
-import { currentGuards, installGuards } from './guards.js';
+import { currentGuards, installGuards, researchStatus } from './guards.js';
 import { count, logActivity } from './activity.js';
 import { isTrackerRule, listForRule } from '../shared/rulesets.js';
 
@@ -206,7 +206,7 @@ function maybeEscalate(tabId, state) {
 }
 
 // Shields: on/off switches and sites where blocking is paused.
-const SHIELD_DEFAULTS = { slop: true, paused: [], calm: {}, aiLabels: true, mode: 'balanced', guards: {}, farble: [] };
+const SHIELD_DEFAULTS = { slop: true, paused: [], calm: {}, aiLabels: true, mode: 'balanced', guards: {}, farble: [], research: false };
 const PAUSE_RULE_BASE = 10_000;
 
 function pauseRules(domain, id) {
@@ -495,6 +495,7 @@ const handlers = {
       spend: await getSpend(),
       nano: await cachedNanoStatus(),
       guards: effectiveGuards(await getShields()),
+      research: (await getShields()).research ? await researchStatus() : null,
       update: (await chrome.storage.local.get('update')).update ?? null,
       peek: (await chrome.storage.local.get('peek')).peek ?? null,
       xray: ((await chrome.storage.session.get('xrayTabs')).xrayTabs ?? []).includes(tabId),
@@ -646,6 +647,7 @@ const handlers = {
     const next = { ...(await getShields()), ...changes };
     next.slop = Boolean(next.slop);
     next.aiLabels = Boolean(next.aiLabels);
+    next.research = Boolean(next.research);
     next.calm = Object.fromEntries(Object.entries(next.calm ?? {}).map(([k, v]) => [String(k).slice(0, 30), Boolean(v)]));
     next.paused = [...new Set((next.paused ?? []).map(String))].slice(0, 500);
     next.mode = MODES[next.mode] ? next.mode : 'balanced';

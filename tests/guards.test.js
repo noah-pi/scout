@@ -92,3 +92,28 @@ test('modes set visibility; overrides win; protection is on everywhere', async (
   assert.equal(effectiveGuards({ mode: 'quiet', guards: { affiliateMarks: true } }).affiliateMarks, true);
   assert.equal(effectiveGuards({ mode: 'nonsense' }).mode, 'balanced');
 });
+
+test('IP-logging links are named, and the stop rule matches them, ports and subdomains included', async () => {
+  const { IP_LOGGERS, ipLogger, ipLoggerRegexes } = await import('../src/shared/iploggers.js');
+  const { linkFindings } = await import('../src/shared/links.js');
+  assert.equal(ipLogger('www.grabify.link').service, 'Grabify');
+  assert.equal(ipLogger('example.com'), null);
+  const regexes = ipLoggerRegexes();
+  for (const d of Object.keys(IP_LOGGERS)) assert.ok(regexes.some((r) => r.includes(d.replace(/\./g, '\\.'))), d);
+  const re = { test: (u) => regexes.some((r) => new RegExp(r).test(u)) };
+  assert.ok(re.test('https://grabify.link/ABC'));
+  assert.ok(re.test('http://grabify.link:8080/ABC'));
+  assert.ok(re.test('https://x.iplogger.org/'));
+  assert.ok(!re.test('https://grabify.link.evil.example/'));
+  assert.ok(!re.test('https://notgrabify.link/'));
+  assert.ok(linkFindings('https://iplogger.org/2abc').findings.some((f) => f.severity === 'hard' && /IPLogger/.test(f.text)));
+});
+
+test('research mode forces forget-on-close and keeps the other guards', async () => {
+  const { effectiveGuards } = await import('../src/shared/modes.js');
+  const on = effectiveGuards({ research: true, guards: { forgetOnClose: false } });
+  assert.equal(on.forgetOnClose, true);
+  assert.equal(on.research, true);
+  assert.equal(on.ipLoggers, true);
+  assert.equal(effectiveGuards({}).forgetOnClose, false);
+});
