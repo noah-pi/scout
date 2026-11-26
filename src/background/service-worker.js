@@ -19,6 +19,7 @@ import { GUARD_KEYS, MODES, effectiveGuards } from '../shared/modes.js';
 import { evalSnippets, filterCompactRules } from '../../dist/consent-lib.js';
 import { currentGuards, installGuards, researchStatus } from './guards.js';
 import { installWatch } from './watch.js';
+import { installRot, ruleRot } from './rot.js';
 import { count, logActivity } from './activity.js';
 import { isTrackerRule, listForRule } from '../shared/rulesets.js';
 
@@ -489,6 +490,7 @@ const handlers = {
       chrome: await chromeProtection(),
       shields: await getShields(),
       pageRules: await pageRulesSummary(),
+      rot: await ruleRot(),
       site: tab.host ? registrableDomain(tab.host) : null,
       trusted: await memory.listTrusted(),
       extensions: auditAll(await chrome.management.getAll().catch(() => []), chrome.runtime.id),
@@ -771,6 +773,7 @@ const handlers = {
 
 const guardHooks = installGuards({ handlers, mergeFlags, reassess, atUrl, getShields });
 installWatch({ handlers });
+installRot({ getShields });
 
 chrome.commands.onCommand.addListener(async (command, tab) => {
   if (command === 'toggle-xray' && tab?.id) handlers.xray({ tabId: tab.id });

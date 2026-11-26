@@ -413,3 +413,8 @@ form.form .btn { margin: 2px 10px 10px auto; }
 .facts li .v.warn { color: var(--warn); }
 
 .pills button { padding: 4px 8px; }
+
+/* Page rules that keep missing on their own sites. */
+.footnote.warn { color: var(--warn); }
+.footnote.warn a { color: inherit; }
+small.secondary.warn { color: var(--warn); }

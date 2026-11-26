@@ -124,6 +124,7 @@ async function render() {
   renderSpoilers(tab.spoilersHidden ?? 0);
   renderShields(tab, site, shields, trusted, extensions);
   renderCalm(tab, shields, pageRules);
+  renderRot(state.rot ?? []);
 
   $('chrome').textContent =
     protection.safeBrowsing === false
@@ -443,6 +444,19 @@ function renderCalm(tab, shields, rules) {
   $('rules-status').textContent = rules.error
     ? `Rules from ${rules.updated ?? 'unknown'}. The last update check failed: ${rules.error}`
     : `Rules from ${rules.updated ?? 'unknown'}, checked ${when}. They update daily and can only hide things.`;
+}
+
+// Rules that keep missing on the sites they're written for: the site has
+// probably changed its markup. The fix is an edit to data/page-rules.json.
+function renderRot(stale) {
+  const box = $('rule-rot');
+  box.hidden = !stale.length;
+  if (!stale.length) return;
+  const since = (r) => (r.lastHit ? `last matched ${new Date(r.lastHit).toLocaleDateString()}` : 'never matched');
+  box.replaceChildren(
+    `May have stopped working: ${stale.map((r) => `${r.label} (${since(r)}, missed ${r.misses} visits in a row)`).join('; ')}. The site has probably changed its markup. `,
+    Object.assign(el('a', '', 'Edit the page rules'), { href: 'https://github.com/noah-pi/scout/edit/main/data/page-rules.json', target: '_blank', rel: 'noopener' }),
+  );
 }
 
 $('ai-labels').onchange = (e) => ask({ type: 'saveShields', changes: { aiLabels: e.target.checked } }).then(render);
