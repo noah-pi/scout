@@ -513,11 +513,44 @@ $('peek-restore').onclick = async (e) => busy(e.currentTarget, async () => ask({
 $('check-update').onclick = (e) => busy(e.currentTarget, () => ask({ type: 'checkUpdate' }), 'tool-status');
 
 // ---- Tools -------------------------------------------------------------------
-function renderTools({ xray, peek }, tab) {
+function renderTools({ xray, peek, watching }, tab) {
   $('tools').hidden = !tab.host;
   $('xray').setAttribute('aria-pressed', String(Boolean(xray)));
   $('xray').textContent = xray ? 'X-ray on' : 'X-ray';
   $('peek').disabled = Boolean(peek);
+  $('watch').setAttribute('aria-pressed', String(Boolean(watching)));
+  $('watch').textContent = watching ? 'Watching for edits' : 'Watch for edits';
+  renderEarliest(tab.earliest);
+}
+
+// One change record as lines a person can read: before and after.
+function changeLines(changes) {
+  const out = [];
+  const cut = (t) => (t.length > 220 ? `${t.slice(0, 220)}…` : t);
+  for (const c of changes) {
+    if (['headline', 'description', 'byline'].includes(c.field)) out.push(`${{ headline: 'Headline', description: 'Summary', byline: 'Byline' }[c.field]}: “${cut(c.before)}” → “${cut(c.after)}”`);
+    if (c.field === 'body') {
+      for (const e of c.edited) out.push(`Edited: “${cut(e.before)}” → “${cut(e.after)}”`);
+      for (const r of c.removed) out.push(`Removed: “${cut(r)}”`);
+      for (const a of c.added) out.push(`Added: “${cut(a)}”`);
+    }
+    if (c.field === 'quotes') for (const q of c.removed) out.push(`Quote gone: “${cut(q)}”`);
+  }
+  return out;
+}
+
+function renderEarliest(e) {
+  const box = $('earliest');
+  if (!e) return (box.hidden = true);
+  if (!e.found) return card(box, { lead: 'No archived copy', body: ['The Internet Archive has no earlier copy of this page.'] });
+  const when = new Date(e.at).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+  card(box, {
+    lead: !e.readable ? 'Couldn’t compare' : e.changes.length ? `Changed since ${when}` : `Unchanged since ${when}`,
+    tone: e.readable && e.changes.length ? 'mixed' : '',
+    body: [e.sentence],
+    list: e.readable ? changeLines(e.changes).slice(0, 12) : [],
+    meta: `Earliest copy in the Internet Archive: ${e.archived}`,
+  });
 }
 const toolStatus = (text) => ($('tool-status').textContent = text);
 $('xray').onclick = async (e) => busy(e.currentTarget, async () => ask({ type: 'xray', tabId: await activeTabId() }), 'tool-status');
@@ -528,10 +561,29 @@ $('peek').onclick = async (e) => busy(e.currentTarget, async () => {
 $('outlet-lookup').onclick = async (e) => busy(e.currentTarget, async () => ask({ type: 'outlet', tabId: await activeTabId() }), 'tool-status');
 $('cite').onclick = async (e) => busy(e.currentTarget, async () => {
   toolStatus('Asking the Internet Archive for a fresh copy. This can take half a minute.');
-  const { text, archived } = await ask({ type: 'cite', tabId: await activeTabId() });
+  const { text, archived, watching } = await ask({ type: 'cite', tabId: await activeTabId() });
   await navigator.clipboard.writeText(text);
-  toolStatus(archived ? `Copied, with the archived copy: ${text}` : `Copied (the archive didn't answer, so no archived link): ${text}`);
+  const watch = watching ? ' Scout is watching it for edits.' : '';
+  toolStatus(archived ? `Copied, with the archived copy: ${text}${watch}` : `Copied (the archive didn't answer, so no archived link): ${text}${watch}`);
 }, 'tool-status');
+$('watch').onclick = async (e) => busy(e.currentTarget, async () => {
+  const tabId = await activeTabId();
+  const { watching, tab } = await ask({ type: 'panelState', tabId });
+  if (watching) {
+    await ask({ type: 'unwatchStory', url: tab.url });
+    toolStatus('Stopped watching this story.');
+  } else {
+    await ask({ type: 'watchStory', tabId });
+    toolStatus('Watching this story for 90 days. Scout fetches it once a day without cookies and tells you if the words change.');
+  }
+}, 'tool-status');
+$('earliest-check').onclick = async (e) => busy(e.currentTarget, async () => {
+  toolStatus('Asking the Internet Archive for its earliest copy and comparing it with the page now.');
+  await ask({ type: 'compareEarliest', tabId: await activeTabId() });
+  toolStatus('');
+}, 'tool-status');
+$('watch-check').onclick = (e) => busy(e.currentTarget, () => ask({ type: 'checkWatched', force: true }), 'tool-status');
+
 $('evidence').onclick = async (e) => busy(e.currentTarget, async () => {
   toolStatus('Saving the page, a screenshot and a web archive, and asking a timestamp authority to witness the record.');
   const { folder, hashes, timestamp } = await ask({ type: 'saveEvidence', tabId: await activeTabId() });
@@ -673,7 +725,29 @@ $('farble').onchange = async (e) => {
 $('notify-settings').onclick = () => chrome.tabs.create({ url: 'chrome://settings/content/notifications' });
 
 // ---- Activity ---------------------------------------------------------------
+async function renderWatched() {
+  const watched = await ask({ type: 'getWatched' });
+  $('watched-section').hidden = !watched.length;
+  const day = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
+  $('watched-list').replaceChildren(
+    ...watched.map((w) => {
+      const last = w.changes.at(-1);
+      const text = el('div', 'grow');
+      const title = Object.assign(el('a', '', w.title), { href: w.url, target: '_blank', rel: 'noopener' });
+      const status = Date.now() > w.until ? `Stopped watching ${day(w.until)}` : w.error ? w.error : last ? `${last.sentence} ${day(last.at)}` : `No changes · checked ${day(w.checkedAt)}`;
+      text.append(title, el('small', `secondary${last?.stealth ? ' warn' : ''}`, `${w.host} · ${status}`));
+      if (last) {
+        const details = el('details');
+        details.append(el('summary', '', `${plural(w.changes.length, 'change')}`), ...w.changes.slice(-5).reverse().flatMap((c) => [el('p', 'act-day', `${day(c.at)}${c.stealth ? ' · updated date unchanged' : ''}`), ...changeLines(c.changes).slice(0, 8).map((l) => el('p', '', l))]));
+        text.append(details);
+      }
+      return li(`row${last?.stealth ? ' finding soft' : ''}`, text, linkButton('Stop', () => ask({ type: 'unwatchStory', url: w.url }).then(renderWatched), 'danger'));
+    }),
+  );
+}
+
 async function renderActivity() {
+  renderWatched();
   const items = await ask({ type: 'getActivity' });
   const list = $('activity-list');
   if (!items.length) return list.replaceChildren(el('p', 'footnote', 'Nothing yet. When Scout steps in, it says so here.'));

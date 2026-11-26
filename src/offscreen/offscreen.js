@@ -5,6 +5,7 @@
 import { Anthropic } from '../../dist/anthropic.js';
 import { Context, Reader, createC2pa, jsQR } from '../../dist/c2pa.js';
 import { sniffMetadata } from '../shared/provenance.js';
+import { snapshotFromDocument } from '../shared/edits.js';
 
 function describe(error) {
   if (error instanceof Anthropic.AuthenticationError) return { kind: 'auth', message: 'The API key was rejected.' };
@@ -125,7 +126,16 @@ async function fetchText({ url }) {
   return { url: res.url, title: doc.title, text: (root?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 120_000) };
 }
 
-const ops = { claude, nanoAvailability, nanoPrompt, readImage, fetchText };
+// A story's snapshot for edit checks: fetched without cookies, parsed with
+// DOMParser (no scripts run), reduced to headline, byline, dates and body.
+async function storySnapshot({ url }) {
+  const res = await fetch(url, { credentials: 'omit', redirect: 'follow', cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+  return { ...snapshotFromDocument(doc, url), finalUrl: res.url, at: Date.now() };
+}
+
+const ops = { claude, nanoAvailability, nanoPrompt, readImage, fetchText, storySnapshot };
 
 chrome.runtime.onMessage.addListener((message, _sender, reply) => {
   if (message?.target !== 'offscreen' || !ops[message.op]) return false;

@@ -17,7 +17,8 @@ export function startServer(routes) {
       const body = raw.toString();
       seen.push({ url: req.url, method: req.method, headers: req.headers, body });
       const path = req.url.split('?')[0];
-      const route = routes[path];
+      // A key ending in * matches any path that starts with it.
+      const route = routes[path] ?? Object.entries(routes).find(([k]) => k.endsWith('*') && path.startsWith(k.slice(0, -1)))?.[1];
       if (req.method === 'OPTIONS') {
         res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' });
         return res.end();

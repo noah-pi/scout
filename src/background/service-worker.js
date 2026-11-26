@@ -18,6 +18,7 @@ import { normalizeEntry } from '../shared/spoilers.js';
 import { GUARD_KEYS, MODES, effectiveGuards } from '../shared/modes.js';
 import { evalSnippets, filterCompactRules } from '../../dist/consent-lib.js';
 import { currentGuards, installGuards, researchStatus } from './guards.js';
+import { installWatch } from './watch.js';
 import { count, logActivity } from './activity.js';
 import { isTrackerRule, listForRule } from '../shared/rulesets.js';
 
@@ -500,6 +501,7 @@ const handlers = {
       peek: (await chrome.storage.local.get('peek')).peek ?? null,
       xray: ((await chrome.storage.session.get('xrayTabs')).xrayTabs ?? []).includes(tabId),
       version: chrome.runtime.getManifest().version,
+      watching: tab.url ? Boolean((await chrome.storage.local.get('watched')).watched?.[tab.url.split('#')[0]]) : false,
     };
   },
 
@@ -768,6 +770,7 @@ const handlers = {
 };
 
 const guardHooks = installGuards({ handlers, mergeFlags, reassess, atUrl, getShields });
+installWatch({ handlers });
 
 chrome.commands.onCommand.addListener(async (command, tab) => {
   if (command === 'toggle-xray' && tab?.id) handlers.xray({ tabId: tab.id });

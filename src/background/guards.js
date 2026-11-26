@@ -355,7 +355,9 @@ export function installGuards({ handlers, mergeFlags, reassess, atUrl, getShield
         archived ? `Archived ${date(Date.now())} at ${archived}.` : `Accessed ${date(Date.now())}; the Internet Archive didn't return a copy.`,
       ];
       logActivity({ kind: 'cite', host: new URL(tab.url).hostname, text: archived ? 'Archived the page and copied a citation.' : 'Copied a citation; the archive was unavailable.' });
-      return { text: parts.filter(Boolean).join(' '), archived };
+      // A story you cite is watched for edits from now on.
+      const watching = await handlers.watchStory({ tabId }).then(() => true, () => false);
+      return { text: parts.filter(Boolean).join(' '), archived, watching };
     },
 
     // Honest titles on YouTube, from DeArrow's crowd-sourced titles. Only a

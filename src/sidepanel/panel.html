@@ -99,7 +99,10 @@
         <button type="button" class="btn secondary small" id="outlet-lookup">Who runs this?</button>
         <button type="button" class="btn secondary small" id="cite">Cite + archive</button>
         <button type="button" class="btn secondary small" id="evidence">Save evidence</button>
+        <button type="button" class="btn secondary small" id="watch" aria-pressed="false">Watch for edits</button>
+        <button type="button" class="btn secondary small" id="earliest-check">Since first archived</button>
       </div>
+      <div class="card" id="earliest" hidden></div>
       <p class="footnote" id="tool-status" role="status"></p>
     </section>
 
@@ -110,6 +113,15 @@
 
   <!-- ACTIVITY: what Scout did, in plain sentences, newest first. -->
   <main data-panel="activity" hidden>
+    <section id="watched-section">
+      <div class="activity-head">
+        <h3 class="group-title">Watched stories</h3>
+        <span class="grow"></span>
+        <button type="button" class="btn link" id="watch-check">Check now</button>
+      </div>
+      <ul class="group" id="watched-list"></ul>
+      <p class="footnote">Stories you cite, or choose to watch, are fetched again once a day for 90 days, without cookies, and compared with the copy Scout kept. A change the page's updated date doesn't admit is marked.</p>
+    </section>
     <section>
       <div class="activity-head">
         <h3 class="group-title">What Scout did</h3>
