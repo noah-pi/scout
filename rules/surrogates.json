@@ -1,0 +1,12 @@
+[
+  {"id":1,"priority":100,"action":{"type":"redirect","redirect":{"extensionPath":"/web_accessible_resources/google-analytics_analytics.js"}},"condition":{"urlFilter":"||google-analytics.com/analytics.js","resourceTypes":["script"],"domainType":"thirdParty"}},
+  {"id":2,"priority":100,"action":{"type":"redirect","redirect":{"extensionPath":"/web_accessible_resources/google-analytics_ga.js"}},"condition":{"urlFilter":"||google-analytics.com/ga.js","resourceTypes":["script"],"domainType":"thirdParty"}},
+  {"id":3,"priority":100,"action":{"type":"redirect","redirect":{"extensionPath":"/web_accessible_resources/google-analytics_cx_api.js"}},"condition":{"urlFilter":"||google-analytics.com/cx/api.js","resourceTypes":["script"],"domainType":"thirdParty"}},
+  {"id":4,"priority":100,"action":{"type":"redirect","redirect":{"extensionPath":"/web_accessible_resources/googletagmanager_gtm.js"}},"condition":{"urlFilter":"||googletagmanager.com/gtm.js","resourceTypes":["script"],"domainType":"thirdParty"}},
+  {"id":5,"priority":100,"action":{"type":"redirect","redirect":{"extensionPath":"/web_accessible_resources/googletagmanager_gtm.js"}},"condition":{"urlFilter":"||googletagmanager.com/gtag/js","resourceTypes":["script"],"domainType":"thirdParty"}},
+  {"id":6,"priority":100,"action":{"type":"redirect","redirect":{"extensionPath":"/web_accessible_resources/scorecardresearch_beacon.js"}},"condition":{"urlFilter":"||scorecardresearch.com/beacon.js","resourceTypes":["script"],"domainType":"thirdParty"}},
+  {"id":7,"priority":100,"action":{"type":"redirect","redirect":{"extensionPath":"/web_accessible_resources/chartbeat.js"}},"condition":{"urlFilter":"||static.chartbeat.com/js/chartbeat.js","resourceTypes":["script"],"domainType":"thirdParty"}},
+  {"id":101,"priority":100,"action":{"type":"redirect","redirect":{"extensionPath":"/web_accessible_resources/googletagservices_gpt.js"}},"condition":{"urlFilter":"||googletagservices.com/tag/js/gpt.js","resourceTypes":["script"],"domainType":"thirdParty"}},
+  {"id":102,"priority":100,"action":{"type":"redirect","redirect":{"extensionPath":"/web_accessible_resources/googletagservices_gpt.js"}},"condition":{"urlFilter":"||securepubads.g.doubleclick.net/tag/js/gpt.js","resourceTypes":["script"],"domainType":"thirdParty"}},
+  {"id":103,"priority":100,"action":{"type":"redirect","redirect":{"extensionPath":"/web_accessible_resources/amazon_apstag.js"}},"condition":{"urlFilter":"||c.amazon-adsystem.com/aax2/apstag.js","resourceTypes":["script"],"domainType":"thirdParty"}}
+]

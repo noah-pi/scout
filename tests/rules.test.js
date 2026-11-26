@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { ownerIndex, trackerFor } from '../src/shared/trackers.js';
+import { listForRule } from '../src/shared/rulesets.js';
 import { compactEntities, parseUBlacklist, splitEasyPrivacy } from '../scripts/update-lists.mjs';
 
 const read = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
@@ -32,10 +34,30 @@ test('parseUBlacklist reads match patterns and regexes', () => {
   assert.deepEqual(parseUBlacklist('# c\n*://*.slop.ai/*\n*://plain.com/*\n/pinterest.+\\/bot/\n'), { domains: ['plain.com', 'slop.ai'], patterns: ['pinterest.+\\/bot'] });
 });
 
-test('splitEasyPrivacy drops redirects and header rewrites', () => {
-  const rules = ['block', 'allow', 'redirect', 'modifyHeaders'].map((type, id) => ({ id, action: { type }, condition: {} }));
-  const { block, allow } = splitEasyPrivacy(rules);
-  assert.deepEqual([block.length, allow.length], [1, 1]);
+test('splitEasyPrivacy keeps redirects Scout has a stand-in for and drops header rewrites', () => {
+  const rules = ['block', 'allow', 'modifyHeaders'].map((type, id) => ({ id, action: { type }, condition: {} }));
+  rules.push({ id: 7, action: { type: 'redirect', redirect: { extensionPath: '/web_accessible_resources/noop.js' } }, condition: {} });
+  rules.push({ id: 8, action: { type: 'redirect', redirect: { extensionPath: '/web_accessible_resources/missing.js' } }, condition: {} });
+  const { block, allow, redirect } = splitEasyPrivacy(rules, ['noop.js']);
+  assert.deepEqual([block.length, allow.length, redirect.map((r) => r.id)], [1, 1, [7]]);
+});
+
+test('every redirect points at a stand-in file Scout ships, and the folder is web-accessible', () => {
+  const manifest = read('../manifest.json');
+  const redirects = manifest.declarative_net_request.rule_resources.flatMap(({ path }) => read(`../${path}`)).filter((r) => r.action.type === 'redirect' && r.action.redirect.extensionPath);
+  assert.ok(redirects.length >= 10, `${redirects.length} redirects`);
+  for (const r of redirects) assert.ok(existsSync(new URL(`..${r.action.redirect.extensionPath}`, import.meta.url)), r.action.redirect.extensionPath);
+  assert.ok(manifest.web_accessible_resources.some((w) => w.resources.includes('web_accessible_resources/*') && w.use_dynamic_url));
+});
+
+test('listForRule counts blocks and stand-ins, and nothing else', () => {
+  assert.equal(listForRule({ rulesetId: 'easyprivacy', ruleId: 9 }), 'trackers');
+  assert.equal(listForRule({ rulesetId: 'easylist-redirect', ruleId: 9 }), 'ads');
+  assert.equal(listForRule({ rulesetId: 'surrogates', ruleId: 1 }), 'trackers');
+  assert.equal(listForRule({ rulesetId: 'surrogates', ruleId: 101 }), 'ads');
+  assert.equal(listForRule({ rulesetId: '_dynamic', ruleId: 20_000 }), 'trackers');
+  assert.equal(listForRule({ rulesetId: 'easyprivacy-allow', ruleId: 9 }), null);
+  assert.equal(listForRule({ rulesetId: 'gpc', ruleId: 1 }), null);
 });
 
 test('compactEntities keeps named owners with domains', () => {

@@ -19,6 +19,7 @@ import { GUARD_KEYS, MODES, effectiveGuards } from '../shared/modes.js';
 import { evalSnippets, filterCompactRules } from '../../dist/consent-lib.js';
 import { currentGuards, installGuards } from './guards.js';
 import { count, logActivity } from './activity.js';
+import { isTrackerRule, listForRule } from '../shared/rulesets.js';
 
 // Reject everything a banner offers; cosmetic rules hide banners that can't be
 // answered. Heuristic detection stays off: it guesses at buttons.
@@ -40,7 +41,7 @@ async function blockedSince(tabId, since) {
   if (cached && cached.since === since && Date.now() - cached.at < 15_000) return cached.count;
   try {
     const { rulesMatchedInfo } = await chrome.declarativeNetRequest.getMatchedRules({ tabId, minTimeStamp: since });
-    const count = rulesMatchedInfo.filter((m) => m.rule.rulesetId === 'easyprivacy').length;
+    const count = rulesMatchedInfo.filter((m) => isTrackerRule(m.rule)).length;
     blockCounts.set(tabId, { since, at: Date.now(), count });
     return count;
   } catch {
@@ -306,15 +307,76 @@ async function tabForRequest(request) {
 }
 
 chrome.declarativeNetRequest.onRuleMatchedDebug?.addListener(async (match) => {
+  if (witnessOnly) return;
+  witnessed(match.request);
   const tabId = await tabForRequest(match.request);
   if (tabId >= 0) return recordMatch(tabId, match.request, match.rule, match.request.tabId < 0);
   const origin = match.request.initiator;
   if (origin?.startsWith('http')) waiting.set(origin, [...(waiting.get(origin) ?? []), { at: Date.now(), match }].slice(-200));
 });
 
+// A second witness. Chrome now and then blocks a request without sending the
+// rule-match event (seen in automated browsers, for requests it files under
+// no tab). webRequest still reports the request failing with
+// ERR_BLOCKED_BY_CLIENT. If no rule-match event for it arrives within a
+// second, Scout asks Chrome which of its own rules the request matches and
+// records that. Stand-in redirects are watched the same way. A block by another extension matches none of Scout's rules
+// and is left alone.
+const seenRequests = new Map(); // requestId or url -> when the rule-match event came
+let witnessOnly = false; // tests only: ignore rule-match events to exercise the witness
+chrome.storage.local.get('testWitnessOnly').then(({ testWitnessOnly }) => (witnessOnly = Boolean(testWitnessOnly)));
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.testWitnessOnly) witnessOnly = Boolean(changes.testWitnessOnly.newValue);
+});
+
+function witnessed(request) {
+  const now = Date.now();
+  seenRequests.set(`id:${request.requestId}`, now);
+  seenRequests.set(`url:${request.url}`, now);
+  if (seenRequests.size > 2000) for (const [k, at] of seenRequests) if (now - at > 10_000) seenRequests.delete(k);
+}
+const wasWitnessed = (details) => {
+  const recent = (k) => Date.now() - (seenRequests.get(k) ?? 0) < 5_000;
+  return recent(`id:${details.requestId}`) || recent(`url:${details.url}`);
+};
+
+chrome.webRequest?.onErrorOccurred.addListener(
+  (details) => {
+    if (details.error !== 'net::ERR_BLOCKED_BY_CLIENT' || !/^https?:/.test(details.url)) return;
+    setTimeout(() => witness(details).catch(() => {}), 1000);
+  },
+  { urls: ['<all_urls>'] },
+);
+// A tracker swapped for one of Scout's stand-in files shows up as a redirect.
+chrome.webRequest?.onBeforeRedirect.addListener(
+  (details) => {
+    if (!/^chrome-extension:\/\/[^/]+\/web_accessible_resources\//.test(details.redirectUrl) || !/^https?:/.test(details.url)) return;
+    setTimeout(() => witness(details).catch(() => {}), 1000);
+  },
+  { urls: ['<all_urls>'] },
+);
+
+async function witness(details) {
+  if (wasWitnessed(details)) return;
+  const { matchedRules = [] } = await chrome.declarativeNetRequest.testMatchOutcome({
+    url: details.url,
+    type: details.type,
+    method: String(details.method ?? 'get').toLowerCase(),
+    initiator: details.initiator,
+    tabId: details.tabId,
+  });
+  const rule = matchedRules.find((r) => (!r.extensionId || r.extensionId === chrome.runtime.id) && listForRule(r));
+  if (!rule || wasWitnessed(details)) return;
+  witnessed(details);
+  count(['witnessed']);
+  const request = { url: details.url, type: details.type, initiator: details.initiator, tabId: details.tabId, requestId: details.requestId };
+  const tabId = await tabForRequest(request);
+  if (tabId >= 0) recordMatch(tabId, request, rule, details.tabId < 0);
+}
+
 function recordMatch(tabId, request, rule, viaInitiator) {
   request = { ...request, tabId };
-  const list = rule.rulesetId === 'easylist' ? 'ads' : rule.rulesetId === 'easyprivacy' ? 'trackers' : rule.rulesetId === '_dynamic' && rule.ruleId === 20_000 ? 'trackers' : null;
+  const list = listForRule(rule);
   if (!list) return;
   const url = new URL(request.url);
   updateTab(request.tabId, async (current) => {
